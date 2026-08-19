@@ -1,0 +1,22 @@
+[project]
+name = "mavlink"
+version = "0.1.0"
+description = "Tools for swingby's avionics system"
+readme = "README.md"
+authors = [
+    { name = "Yuta Suzuki", email = "suzuki7yuta@gmail.com" }
+]
+requires-python = ">=3.14"
+dependencies = []
+
+[build-system]
+requires = ["uv_build>=0.12.4,<0.13.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pymavlink>=2.4.49",
+    "pyserial>=3.5",
+    "pytest>=9.1.1",
+    "ruff>=0.16.3",
+]

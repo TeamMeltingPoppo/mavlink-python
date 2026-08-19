@@ -1,0 +1,3 @@
+[submodule "mavlink-dialect"]
+	path = mavlink-dialect
+	url = https://github.com/teammeltingpoppo/mavlink-dialect
