@@ -1,6 +1,5 @@
 [project]
 name = "mavlink"
-version = "0.1.0"
 description = "Tools for swingby's avionics system"
 readme = "README.md"
 authors = [
@@ -8,10 +7,14 @@ authors = [
 ]
 requires-python = ">=3.14"
 dependencies = []
+dynamic = ["version"]
 
 [build-system]
-requires = ["uv_build>=0.12.4,<0.13.0"]
-build-backend = "uv_build"
+requires = ["hatchling", "hatch-vcs"]
+build-backend = "hatchling.build"
+
+[tool.hatch.version]
+source = "vcs"
 
 [dependency-groups]
 dev = [
