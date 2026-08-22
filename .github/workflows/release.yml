@@ -28,7 +28,7 @@ jobs:
         run: uv python install 3.14
 
       - name: Generate
-        run: uv run python scripts/generate.py
+        run: uv run --locked python scripts/generate.py
 
       - name: Create package
         run: uv build
