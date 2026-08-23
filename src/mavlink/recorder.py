@@ -1,24 +1,21 @@
-from .generated import mavlink
 import struct
 from pathlib import Path
-from .subscriber import MAVLinkSubscriber
-import threading
+from .subscriber_base import MAVLinkSubscriberBase
+from threading import Lock
 
-class MAVLinkRecorder:
-    def __init__(self, file:Path,subscriber:MAVLinkSubscriber):
+class MAVLinkRecorder(MAVLinkSubscriberBase):
+    def __init__(self, filepath:Path):
         """Set the file to write MAVLink messages to."""
-        self.file = file
+        super().__init__(lambda _msg,_sys,_comp:True)
+        self.file = filepath
         self.file.parent.mkdir(parents=True, exist_ok=True)
         self.file.touch()
-        self.subscriber=subscriber
-    def __write_to_file(self, timestamp:int, msg:mavlink.MAVLink_message):
+        self.lock=Lock()
+    def __push__(self, item):
         """Write the timestamp and message to the file."""
+        timestamp,msg = item
         bytes_to_write = bytearray(struct.pack('>Q', timestamp)) + msg.get_msgbuf()
-        if self.file:
-            with open(self.file, 'ab') as f:
-                f.write(bytes_to_write)
-    def run(self,stop_event:threading.Event):
-        while not stop_event.is_set():
-            result=self.subscriber.get(0.01)
-            if result is not None:
-                self.__write_to_file(*result)
+        with self.lock:
+            if self.file:
+                with open(self.file, 'ab') as f:
+                    f.write(bytes_to_write)

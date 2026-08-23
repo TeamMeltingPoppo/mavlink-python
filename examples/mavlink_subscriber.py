@@ -4,20 +4,25 @@ import threading
 import serial
 
 import mavlink
-from mavlink import MAVLinkData, definition, MAVLinkRecorder
+from mavlink import MAVLinkStream, definition, MAVLinkEndpoint
 
 from logging import basicConfig, getLogger
 
 def polling_thread(
-    mavlink_data: MAVLinkData,
+    mavlink_stream: MAVLinkStream,
     serial_port: serial.Serial,
     stop_event: threading.Event,
 ):
+    endpoint=MAVLinkEndpoint(1,1)
     while not stop_event.is_set():
         if serial_port.in_waiting > 0:
             data = serial_port.read()
             if data:
-                mavlink_data.parse_bytes(data, int(time.time_ns() // 1000))
+                msg_list=endpoint.parse(data)
+                if msg_list is not None:
+                    for msg in msg_list:
+                        mavlink_stream.publish(time.time_ns()//1000,msg)
+                        
 
 def display_subscriber(
     subscriber: mavlink.MAVLinkSubscriber,
@@ -40,10 +45,11 @@ if __name__ == "__main__":
     basicConfig(level="DEBUG",format="%(asctime)s [%(levelname)s %(name)s] %(message)s")
     logger = getLogger()
 
-    mavlink_data = mavlink.MAVLinkData()
+    mavlink_data = mavlink.MAVLinkStream()
 
     # subscribe HEARTBEAT messages
-    subscriber = mavlink_data.subscribe(lambda msgid,sysid,compid :msgid==definition.MAVLINK_MSG_ID_HEARTBEAT)
+    # subscriber = mavlink_data.subscribe(lambda msgid,sysid,compid :msgid==definition.MAVLINK_MSG_ID_HEARTBEAT)
+    subscriber = mavlink_data.subscribe(lambda msgid,sysid,compid :compid==1)
 
     serial_port = serial.Serial(
         port="COM5",
@@ -70,13 +76,11 @@ if __name__ == "__main__":
         for thread in threads:
             thread.start()
 
-        while True:
-            time.sleep(0.1)
-
-    except KeyboardInterrupt:
-        logger.info("Exiting...")
+        input()
 
     finally:
+        logger.info("Exiting...")
+
         stop_event.set()
 
         for thread in threads:
