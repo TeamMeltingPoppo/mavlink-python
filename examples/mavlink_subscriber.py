@@ -4,7 +4,7 @@ import threading
 import serial
 
 import mavlink
-from mavlink import MAVLinkData, definition
+from mavlink import MAVLinkData, definition, MAVLinkRecorder
 
 from logging import basicConfig, getLogger
 
@@ -42,9 +42,7 @@ if __name__ == "__main__":
 
     mavlink_data = mavlink.MAVLinkData()
 
-    # Record received MAVLink messages to a telemetry log.
-    mavlink_data.set_logfile(Path(f"{datetime.now().strftime('logs/log_%Y%m%d_%H%M%S')}.tlog"))
-
+    # subscribe HEARTBEAT messages
     subscriber = mavlink_data.subscribe(lambda msgid,sysid,compid :msgid==definition.MAVLINK_MSG_ID_HEARTBEAT)
 
     serial_port = serial.Serial(

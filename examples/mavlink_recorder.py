@@ -4,7 +4,7 @@ import threading
 import serial
 
 import mavlink
-from mavlink import MAVLinkData, definition
+from mavlink import MAVLinkData, definition, MAVLinkRecorder
 
 from logging import basicConfig, getLogger
 
@@ -19,33 +19,18 @@ def polling_thread(
             if data:
                 mavlink_data.parse_bytes(data, int(time.time_ns() // 1000))
 
-def display_history(
-    subscriber: mavlink.MAVLinkHistory,
-    status: mavlink.MAVLinkStatus,
-    interval: float,
+def display_subscriber(
+    subscriber: mavlink.MAVLinkSubscriber,
     stop_event: threading.Event,
 ):
-    logger = getLogger("history")
-    while not stop_event.wait(interval):
-        subscriber.sync(sync_timestamp=time.time_ns() // 1000)
+    logger = getLogger("subscriber")
+    while not stop_event.is_set():
+        result = subscriber.get(timeout=0.0)
 
-        messages = subscriber.messages()
-        snapshot = status.snapshot()
-
-        if messages:
-            timestamps = [timestamp for timestamp, _ in messages]
-            logger.info(
-                f"History messages "
-                f"[{timestamps[0]} -> {timestamps[-1]}] "
-                f"count: {len(messages)}"
-            )
-        else:
-            logger.info("No messages in history")
-        logger.info("Status:")
-        for (msgid,sysid,compid) in snapshot.observed_messages:
-            if msgid not in mavlink.mavlink_map.keys():
-                continue
-            logger.info(f"\t{msgid=:4d}, {sysid=:2d}, {compid=:3d} : latest_timestamp={snapshot.last_received[(msgid,sysid,compid)]:17d} ({mavlink.mavlink_map[msgid].msgname})")
+        if result:
+            timestamp, message = result
+            logger.info(f"Received message: {message}")
+        time.sleep(0.0001)  # Sleep briefly to avoid busy waiting
 
 if __name__ == "__main__":
 
@@ -57,8 +42,15 @@ if __name__ == "__main__":
 
     mavlink_data = mavlink.MAVLinkData()
 
-    status = mavlink_data.get_status()
-    subscriber = mavlink_data.subscribe_history(lambda msgid,sysid,compid :compid==2,duration=3000_000)
+    # subscribe messages which component_id = 1
+    subscriber = mavlink_data.subscribe(lambda msgid,sysid,compid :compid==1)
+
+    # subscribe all message for a recorder
+    subscriber_all = mavlink_data.subscribe(lambda msgid,sysid,compid : True)
+    filepath=Path(f"{datetime.now().strftime('logs/log_%Y%m%d_%H%M%S')}.tlog")
+    # Record received MAVLink messages to a telemetry log.
+    recorder=MAVLinkRecorder(filepath,subscriber_all)
+
 
     serial_port = serial.Serial(
         port="COM5",
@@ -75,9 +67,14 @@ if __name__ == "__main__":
             name="mavlink-polling",
         ),
         threading.Thread(
-            target=display_history,
-            args=(subscriber,status,1.0,stop_event),
+            target=display_subscriber,
+            args=(subscriber, stop_event),
             name="mavlink-subscriber",
+        ),
+        threading.Thread(
+            target=recorder.run,
+            args=(stop_event,),
+            name="recorder"
         )
     ]
 
