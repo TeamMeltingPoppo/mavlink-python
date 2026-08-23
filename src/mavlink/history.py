@@ -5,7 +5,7 @@ from .subscriber_base import MAVLinkSubscriberBase
 
 class MAVLinkHistory(MAVLinkSubscriberBase):
     """A subscriber that keeps a history of messages."""
-    def __init__(self, msgid:int, sysid:int, compid:int,duration:float=10.0,maxsize:int=10000):
+    def __init__(self, msgid:int, sysid:int, compid:int,duration:int=1000_000,maxsize:int=10000):
         super().__init__(msgid, sysid, compid,maxsize=maxsize)
         self.__duration = duration
         self.history : deque[tuple[float, mavlink.MAVLink_message]] = deque(maxlen=maxsize)
@@ -14,6 +14,8 @@ class MAVLinkHistory(MAVLinkSubscriberBase):
         while not self.queue.empty():
             timestamp, msg = self.queue.get()
             self.history.append((timestamp, msg))
+        if len(self.history) == 0:
+            return
         if sync_timestamp is None:
             sync_timestamp = self.history[-1][0] if self.history else 0.0
         while self.history and (sync_timestamp - self.history[0][0]) > self.__duration:

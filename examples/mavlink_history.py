@@ -19,18 +19,33 @@ def polling_thread(
             if data:
                 mavlink_data.parse_bytes(data, int(time.time_ns() // 1000))
 
-def display_subscriber(
-    subscriber: mavlink.MAVLinkSubscriber,
+def display_history(
+    subscriber: mavlink.MAVLinkHistory,
+    status: mavlink.MAVLinkStatus,
+    interval: float,
     stop_event: threading.Event,
 ):
-    logger = getLogger("subscriber")
-    while not stop_event.is_set():
-        result = subscriber.get(timeout=0.0)
+    logger = getLogger("history")
+    while not stop_event.wait(interval):
+        subscriber.sync(sync_timestamp=time.time_ns() // 1000)
 
-        if result:
-            timestamp, message = result
-            logger.info(f"Received message: {message}")
-        time.sleep(0.0001)  # Sleep briefly to avoid busy waiting
+        messages = subscriber.messages()
+        snapshot = status.snapshot()
+
+        if messages:
+            timestamps = [timestamp for timestamp, _ in messages]
+            logger.info(
+                f"History messages "
+                f"[{timestamps[0]} -> {timestamps[-1]}] "
+                f"count: {len(messages)}"
+            )
+        else:
+            logger.info("No messages in history")
+        logger.info("Status:")
+        for (msgid,sysid,compid) in snapshot.observed_messages:
+            if msgid not in mavlink.mavlink_map.keys():
+                continue
+            logger.info(f"\t{msgid=:4d}, {sysid=:2d}, {compid=:3d} : latest_timestamp={snapshot.last_received[(msgid,sysid,compid)]:17d} ({mavlink.mavlink_map[msgid].msgname})")
 
 if __name__ == "__main__":
 
@@ -45,7 +60,8 @@ if __name__ == "__main__":
     # Record received MAVLink messages to a telemetry log.
     mavlink_data.set_logfile(Path(f"{datetime.now().strftime('logs/log_%Y%m%d_%H%M%S')}.tlog"))
 
-    subscriber = mavlink_data.subscribe(msgid=definition.MAVLINK_MSG_ID_HEARTBEAT)
+    status = mavlink_data.get_status()
+    subscriber = mavlink_data.subscribe_history(compid=1,duration=3000_000)
 
     serial_port = serial.Serial(
         port="COM5",
@@ -62,8 +78,8 @@ if __name__ == "__main__":
             name="mavlink-polling",
         ),
         threading.Thread(
-            target=display_subscriber,
-            args=(subscriber, stop_event),
+            target=display_history,
+            args=(subscriber,status,1.0,stop_event),
             name="mavlink-subscriber",
         )
     ]
