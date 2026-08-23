@@ -61,7 +61,7 @@ if __name__ == "__main__":
     mavlink_data.set_logfile(Path(f"{datetime.now().strftime('logs/log_%Y%m%d_%H%M%S')}.tlog"))
 
     status = mavlink_data.get_status()
-    subscriber = mavlink_data.subscribe_history(compid=1,duration=3000_000)
+    subscriber = mavlink_data.subscribe_history(lambda msgid,sysid,compid :compid==2,duration=3000_000)
 
     serial_port = serial.Serial(
         port="COM5",

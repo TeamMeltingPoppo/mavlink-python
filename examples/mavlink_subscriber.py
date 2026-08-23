@@ -45,7 +45,7 @@ if __name__ == "__main__":
     # Record received MAVLink messages to a telemetry log.
     mavlink_data.set_logfile(Path(f"{datetime.now().strftime('logs/log_%Y%m%d_%H%M%S')}.tlog"))
 
-    subscriber = mavlink_data.subscribe(msgid=definition.MAVLINK_MSG_ID_HEARTBEAT)
+    subscriber = mavlink_data.subscribe(lambda msgid,sysid,compid :msgid==definition.MAVLINK_MSG_ID_HEARTBEAT)
 
     serial_port = serial.Serial(
         port="COM5",

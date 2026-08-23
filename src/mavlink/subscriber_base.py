@@ -1,10 +1,14 @@
 from .generated import mavlink
-from queue import Queue
+import abc
+from typing import Callable
 
-class MAVLinkSubscriberBase:
+class MAVLinkSubscriberBase(abc.ABC):
     """A subscriber to MAVLink messages based on msgid, sysid, and compid."""
-    def __init__(self, msgid:int, sysid:int, compid:int,maxsize:int=100):
-        self.msgid = msgid
-        self.sysid = sysid
-        self.compid = compid
-        self.queue : Queue[tuple[float, mavlink.MAVLink_message]] = Queue(maxsize=maxsize)
+    def __init__(self, filter:Callable[[int,int,int],bool]):
+        self.filter=filter
+    def push(self,item:tuple[int, mavlink.MAVLink_message]):
+        if self.filter(item[1].get_msgId(),item[1].get_srcSystem(),item[1].get_srcComponent()):
+            self.__push__(item)
+    @abc.abstractmethod
+    def __push__(self,item:tuple[int, mavlink.MAVLink_message]):
+        ...
