@@ -1,15 +1,14 @@
 import time
 import threading
 import logging
-import serial
 
 import mavlink
 from mavlink import MAVLinkTopic,Node
-from mavlink.transport.serialport import TransportSerial
+from mavlink.transport.udp import TransportUDPMulticast,UDPMulticastReceiver,UDPSender
 
 class MockNode(Node):
     def __init__(self,topic:MAVLinkTopic):
-        super().__init__(topic=topic,name="Node1",sys_id=1,comp_id=10)
+        super().__init__(topic=topic,name="Node1",sys_id=255,comp_id=2)
     def setup(self):
         self.subscriber=self.topic.create_subscriber(lambda msgid,sysid,compid:True)
         self.publisher=self.topic.create_publisher()
@@ -44,15 +43,18 @@ if __name__=="__main__":
 
     mavlink_topic = MAVLinkTopic()
 
-    transport=TransportSerial(serialport=serial.Serial(port="COM5",baudrate=115200,timeout=0.1))
+    transport = TransportUDPMulticast(
+        sender=None,
+        receiver=UDPMulticastReceiver(multicast_group='239.255.0.1',port=14550)
+    )
     connection=mavlink.MAVLinkConnection(transport=transport,topic=mavlink_topic)
-
-    node=MockNode(topic=mavlink_topic)
 
     stop_event = threading.Event()
 
+    node=MockNode(topic=mavlink_topic)
+
     threads = [
-        threading.Thread(target=connection.run,args=(stop_event,),name="serialport"),
+        threading.Thread(target=connection.run,args=(stop_event,),name="connection-udp"),
         threading.Thread(target=node.run,args=(stop_event,),name=f"node({node.name})")
     ]
     

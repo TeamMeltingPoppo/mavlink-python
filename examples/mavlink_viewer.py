@@ -1,47 +1,41 @@
 import threading
-import time
 import logging
-from pathlib import Path
-from datetime import datetime
 import tkinter as tk
-from tkinter import ttk, scrolledtext
+from tkinter import ttk
 import serial
 import serial.tools.list_ports
 
 import mavlink
-from mavlink import MAVLinkConnection
-from mavlink import definition
+from mavlink import MAVLinkTopic, MAVLinkConnection, definition
 from mavlink.transport import TransportSerial
 
 
 class MAVLinkViewerApp(tk.Tk):
+    """
+    MAVLinkStatus の観測状況 (snapshot) を Treeview テーブルで表示する例
+    (Topic / Status をアプリ起動時に1度だけ作成して再利用する構成)
+    """
     def __init__(self):
         super().__init__()
-        self.title("MAVLink Tkinter Example")
-        self.logger = logging.getLogger("MAVLinkViewer")
-        self.geometry("750x500")
+        self.title("MAVLink Status Monitor")
+        self.geometry("600x400")
+
+        self.mavlink_topic = MAVLinkTopic()
+        self.status = self.mavlink_topic.get_status()
 
         self.stop_event = threading.Event()
-        self.threads = []
+        self.connection_thread = None
         self.serialport = None
-        self.subscriber = None
-        self.recorder = None
-        # MAVLink Topic & Log 準備
-        self.mavlink_topic = mavlink.MAVLinkTopic()
-        self.mav=definition.MAVLink(None,1,10)
-        
-        # Direct Subscriber & Publisher
-        self.subscriber = self.mavlink_topic.create_subscriber(
-            lambda msgid, sysid, compid: (sysid == 1) and (compid == 1)
-        )
-        self.publisher = self.mavlink_topic.create_publisher()
 
         self._build_ui()
         self._refresh_ports()
+        
+        # UI更新ループを開始 (200ms間隔)
+        self.after(200, self._update_status_display)
         self.protocol("WM_DELETE_WINDOW", self.on_closing)
 
     def _build_ui(self):
-        # 接続設定フレーム
+        # 接続設定エリア
         conn_frame = ttk.LabelFrame(self, text="Serial Connection")
         conn_frame.pack(fill="x", padx=10, pady=5)
 
@@ -55,7 +49,7 @@ class MAVLinkViewerApp(tk.Tk):
         ttk.Label(conn_frame, text="Baudrate:").pack(side="left", padx=(5, 2))
         self.baud_combo = ttk.Combobox(
             conn_frame, 
-            values=["9600", "19200", "38400", "57600", "115200", "230400", "460800", "921600"],
+            values=["9600", "57600", "115200", "230400", "460800", "921600"],
             width=10
         )
         self.baud_combo.set("115200")
@@ -64,21 +58,31 @@ class MAVLinkViewerApp(tk.Tk):
         self.btn_connect = ttk.Button(conn_frame, text="Connect", command=self.toggle_connection)
         self.btn_connect.pack(side="left", padx=15)
 
-        # メッセージ送信操作フレーム
-        control_frame = ttk.Frame(self)
-        control_frame.pack(fill="x", padx=10, pady=5)
+        # MAVLink Status テーブル表示エリア (Treeview)
+        table_frame = ttk.LabelFrame(self, text="Observed Messages (MAVLink Status)")
+        table_frame.pack(fill="both", expand=True, padx=10, pady=5)
 
-        self.btn_send_heartbeat = ttk.Button(
-            control_frame, 
-            text="Send HEARTBEAT", 
-            command=self.send_heartbeat,
-            state="disabled"
-        )
-        self.btn_send_heartbeat.pack(side="left", padx=5)
+        columns = ("msgid", "msgname", "sysid", "compid", "last_timestamp")
+        self.tree = ttk.Treeview(table_frame, columns=columns, show="headings", selectmode="browse")
 
-        # ログ表示エリア
-        self.log_area = scrolledtext.ScrolledText(self, state="disabled", wrap="word")
-        self.log_area.pack(fill="both", expand=True, padx=10, pady=5)
+        self.tree.heading("msgid", text="Msg ID")
+        self.tree.heading("msgname", text="Message Name")
+        self.tree.heading("sysid", text="Sys ID")
+        self.tree.heading("compid", text="Comp ID")
+        self.tree.heading("last_timestamp", text="Latest Timestamp (us)")
+
+        self.tree.column("msgid", width=40, anchor="center")
+        self.tree.column("msgname", width=80, anchor="w")
+        self.tree.column("sysid", width=40, anchor="center")
+        self.tree.column("compid", width=40, anchor="center")
+        self.tree.column("last_timestamp", width=80, anchor="e")
+
+        # スクロールバー設定
+        scrollbar = ttk.Scrollbar(table_frame, orient="vertical", command=self.tree.yview)
+        self.tree.configure(yscrollcommand=scrollbar.set)
+        
+        self.tree.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
 
         # ステータスバー
         self.status_var = tk.StringVar(value="Disconnected")
@@ -86,126 +90,79 @@ class MAVLinkViewerApp(tk.Tk):
         status_bar.pack(fill="x", side="bottom", padx=10, pady=5)
 
     def _refresh_ports(self):
-        """利用可能なシリアルポートを検出してComboboxを更新"""
         ports = [port.device for port in serial.tools.list_ports.comports()]
         self.port_combo['values'] = ports
-        if ports:
+        if ports and not self.port_combo.get():
             self.port_combo.set(ports[0])
 
     def toggle_connection(self):
-        """Connect / Disconnect ボタンの切り替え"""
         if self.serialport and self.serialport.is_open:
             self.disconnect()
         else:
             self.connect()
 
     def connect(self):
-        """接続処理"""
         port = self.port_combo.get()
         baud_str = self.baud_combo.get()
 
         if not port or not baud_str:
-            self.logger.error("Error: Select Port and Baudrate.")
+            self.status_var.set("Error: Select Port and Baudrate.")
             return
 
         try:
             baud = int(baud_str)
             self.serialport = serial.Serial(port=port, baudrate=baud, timeout=0.1)
-        except serial.SerialException as e:
-            self.logger.error(f"Connection Failed: {e}")
+        except Exception as e:
+            self.status_var.set(f"Connection Failed: {e}")
             return
 
-        log_dir = Path("logs")
-        log_dir.mkdir(exist_ok=True)
-        filepath = log_dir / f"log_{datetime.now().strftime('%Y%m%d_%H%M%S')}.tlog"
-        self.recorder=self.mavlink_topic.create_record(filepath=filepath)
-
         transport = TransportSerial(serialport=self.serialport)
-        self.connection = MAVLinkConnection(transport=transport, topic=self.mavlink_topic)
+        connection = MAVLinkConnection(transport=transport, topic=self.mavlink_topic)
 
         self.stop_event.clear()
-        self.threads = [
-            threading.Thread(target=self.connection.run_rx, args=(self.stop_event,), name="mavlink-rx", daemon=True),
-            threading.Thread(target=self.connection.run_tx, args=(self.stop_event,), name="mavlink-tx", daemon=True),
-        ]
-
-        for thread in self.threads:
-            thread.start()
+        self.connection_thread = threading.Thread(
+            target=connection.run, 
+            args=(self.stop_event,), 
+            name="connection-serialport", 
+            daemon=True
+        )
+        self.connection_thread.start()
 
         # UI状態更新
         self.btn_connect.config(text="Disconnect")
         self.port_combo.config(state="disabled")
         self.baud_combo.config(state="disabled")
-        self.btn_send_heartbeat.config(state="normal")
-        self.logger.info(f"Connected: {port} @ {baud} | Log: {filepath.name}")
-
-        # ポーリング開始
-        self.after(10, self._poll_subscriber)
+        self.status_var.set(f"Connected: {port} @ {baud}")
 
     def disconnect(self):
-        """接続解除処理"""
         self.stop_event.set()
 
-        if self.serialport and self.serialport.is_open:
-            self.serialport.close()
+        self.connection_thread.join(0.1)
 
-        if self.recorder:
-            self.mavlink_topic.unsubscribe(self.recorder)
-
-        self.connection.close()
-
-        self.recorder=None
-
-        self.threads = []
+        self.connection_thread = None
         self.serialport = None
 
-        # UI状態のリセット
         self.btn_connect.config(text="Connect")
         self.port_combo.config(state="normal")
         self.baud_combo.config(state="normal")
-        self.btn_send_heartbeat.config(state="disabled")
         self.status_var.set("Disconnected")
-        self.logger.info("Disconnected from serial port.")
 
-    def _poll_subscriber(self):
+    def _update_status_display(self):
+        """MAVLinkStatus の snapshot を取得してテーブルを更新"""
+        snapshot = self.status.snapshot()
 
-        while True:
-            result = self.subscriber.get(timeout=0)
-            if not result:
-                break
+        for (msgid, sysid, compid) in snapshot.observed_messages:
+            msg_name = definition.mavlink_map[msgid].msgname if msgid in definition.mavlink_map else "UNKNOWN"
+            last_time = snapshot.last_received.get((msgid, sysid, compid), 0)
 
-            timestamp_str = datetime.now().strftime('%H:%M:%S.%f')
-            log_str = f"[{timestamp_str}] {result.message}"
-            self._append_log(log_str)
+            item_id = f"{msgid}_{sysid}_{compid}"
+            if self.tree.exists(item_id):
+                self.tree.item(item_id, values=(msgid, msg_name, sysid, compid, last_time))
+            else:
+                self.tree.insert("", "end", iid=item_id, values=(msgid, msg_name, sysid, compid, last_time))
 
-        self.after(10, self._poll_subscriber)
-
-    def send_heartbeat(self):
-        if not self.mavlink_topic:
-            return
-
-        heartbeat = mavlink.definition.MAVLink_heartbeat_message(
-            type=mavlink.definition.MAV_TYPE_GENERIC,
-            autopilot=mavlink.definition.MAV_AUTOPILOT_GENERIC,
-            base_mode=mavlink.definition.MAV_MODE_PREFLIGHT,
-            custom_mode=0,
-            system_status=mavlink.definition.MAV_STATE_ACTIVE,
-            mavlink_version=3
-        )
-        heartbeat.pack(self.mav)
-
-        self.mavlink_topic.publish(
-            timestamp=time.time_ns() // 1000, 
-            message=heartbeat, 
-            source=self
-        )
-        self._append_log("[Tx] Sent HEARTBEAT from GUI thread")
-
-    def _append_log(self, text: str):
-        self.log_area.config(state="normal")
-        self.log_area.insert(tk.END, text + "\n")
-        self.log_area.see(tk.END)
-        self.log_area.config(state="disabled")
+        # 次回の画面更新をスケジューリング
+        self.after(200, self._update_status_display)
 
     def on_closing(self):
         if self.serialport and self.serialport.is_open:

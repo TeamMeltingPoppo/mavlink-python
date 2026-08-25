@@ -8,7 +8,7 @@ from queue import Queue,Empty
 from collections import deque
 import time
 
-from threading import Lock,Event
+from threading import Lock,Event,Thread
 import abc
 
 from .generated import mavlink
@@ -133,14 +133,18 @@ class MAVLinkStatus:
 class MAVLinkConnection:
     def __init__(self,transport:TransportBase,topic:MAVLinkTopic,filter: Callable[[int, int, int], bool]|None=None):
         self.transport=transport
+        self.reciever=transport.get_receiver()
+        self.sender=transport.get_sender()
+        self.filter=filter
         self.topic=topic
         self.mav=mavlink.MAVLink(None)
         self.mav.robust_parsing=True
-        self.subscriber=self.topic.create_subscriber(filter=filter or (lambda msgid, sysid, compid: True))
 
     def run_rx(self,stop_event:Event):
+        if not self.reciever:
+            return
         while not stop_event.is_set():
-            buffer=self.transport.recv(timeout=0.1)
+            buffer=self.reciever.recv(timeout=0.1)
             if buffer is None:
                 continue
             timestamp=time.time_ns() // 1000
@@ -150,17 +154,26 @@ class MAVLinkConnection:
             for message in messages:
                 self.topic.publish(timestamp=timestamp,message=message,source=self)
 
-    def run_tx(self, stop_event):
+    def run_tx(self, stop_event:Event):
+        if not self.sender:
+            return
+        subscriber=self.topic.create_subscriber(filter=self.filter or (lambda msgid, sysid, compid: True))
         while not stop_event.is_set():
-            item = self.subscriber.get(timeout=0.1)
+            item = subscriber.get(timeout=0.1)
             if item is None:
                 continue
             if item.source==self:
                 continue
-            self.transport.send(item.message.get_msgbuf())
+            self.sender.send(item.message.get_msgbuf())
+        self.topic.unsubscribe(subscriber)
 
-    def close(self):
-        self.topic.unsubscribe(self.subscriber)
+    def run(self,stop_event:Event):
+        thread_rx=Thread(target=self.run_rx,args=(stop_event,),name="thread_rx")
+        thread_tx=Thread(target=self.run_tx,args=(stop_event,),name="thread_tx")
+        thread_rx.start()
+        thread_tx.start()
+        thread_rx.join()
+        thread_tx.join()
         self.transport.close()
 
 class MAVLinkTopic:

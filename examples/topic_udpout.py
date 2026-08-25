@@ -5,11 +5,12 @@ import serial
 
 import mavlink
 from mavlink import MAVLinkTopic,Node
+from mavlink.transport.udp import TransportUDPMulticast,UDPSender
 from mavlink.transport.serialport import TransportSerial
 
 class MockNode(Node):
     def __init__(self,topic:MAVLinkTopic):
-        super().__init__(topic=topic,name="Node1",sys_id=1,comp_id=10)
+        super().__init__(topic=topic,name="Node1",sys_id=255,comp_id=3)
     def setup(self):
         self.subscriber=self.topic.create_subscriber(lambda msgid,sysid,compid:True)
         self.publisher=self.topic.create_publisher()
@@ -44,15 +45,18 @@ if __name__=="__main__":
 
     mavlink_topic = MAVLinkTopic()
 
-    transport=TransportSerial(serialport=serial.Serial(port="COM5",baudrate=115200,timeout=0.1))
-    connection=mavlink.MAVLinkConnection(transport=transport,topic=mavlink_topic)
-
-    node=MockNode(topic=mavlink_topic)
+    transport_udp   =TransportUDPMulticast(sender=UDPSender('239.255.0.1',14550),receiver=None)
+    transport_serial=TransportSerial(serialport=serial.Serial(port="COM5",baudrate=115200,timeout=0.1))
+    connection_udp   =mavlink.MAVLinkConnection(transport=transport_udp   ,topic=mavlink_topic)
+    connection_serial=mavlink.MAVLinkConnection(transport=transport_serial,topic=mavlink_topic)
 
     stop_event = threading.Event()
 
+    node=MockNode(topic=mavlink_topic)
+
     threads = [
-        threading.Thread(target=connection.run,args=(stop_event,),name="serialport"),
+        threading.Thread(target=connection_udp.run,args=(stop_event,),name="connection-udp"),
+        threading.Thread(target=connection_serial.run,args=(stop_event,),name="connection-serialport"),
         threading.Thread(target=node.run,args=(stop_event,),name=f"node({node.name})")
     ]
     

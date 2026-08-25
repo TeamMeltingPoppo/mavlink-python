@@ -36,13 +36,9 @@ if __name__ == "__main__":
     # subscribe HEARTBEAT messages
     # subscriber = mavlink_topic.create_subscriber(lambda msgid,sysid,compid :msgid==mavlink.definition.MAVLINK_MSG_ID_HEARTBEAT)
 
-    serialport = serial.Serial(
-        port="COM5",
-        baudrate=115200,
-        timeout=0.1,
+    transport=TransportSerial(
+        serialport=serial.Serial(port="COM5",baudrate=115200,timeout=0.1)
     )
-    
-    transport=TransportSerial(serialport=serialport)
 
     connection=MAVLinkConnection(transport=transport,topic=mavlink_topic)
 
@@ -50,14 +46,9 @@ if __name__ == "__main__":
 
     threads = [
         threading.Thread(
-            target=connection.run_rx,
+            target=connection.run,
             args=(stop_event,),
-            name="mavlink-polling",
-        ),
-        threading.Thread(
-            target=connection.run_tx,
-            args=(stop_event,),
-            name="mavlink-polling",
+            name="connection-serialport",
         ),
         threading.Thread(
             target=display_subscriber,
@@ -81,4 +72,3 @@ if __name__ == "__main__":
             thread.join()
 
         mavlink_topic.unsubscribe(subscriber)
-        connection.close()
