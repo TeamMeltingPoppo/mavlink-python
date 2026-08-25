@@ -47,14 +47,14 @@ if __name__=="__main__":
         sender=None,
         receiver=UDPMulticastReceiver(multicast_group='239.255.0.1',port=14550)
     )
-    connection=mavlink.MAVLinkConnection(transport=transport,topic=mavlink_topic)
+    bridge=mavlink.MAVLinkBridge(transport=transport,topic=mavlink_topic)
 
     stop_event = threading.Event()
 
     node=MockNode(topic=mavlink_topic)
 
     threads = [
-        threading.Thread(target=connection.run,args=(stop_event,),name="connection-udp"),
+        threading.Thread(target=bridge.run,args=(stop_event,),name="bridge-udp"),
         threading.Thread(target=node.run,args=(stop_event,),name=f"node({node.name})")
     ]
     

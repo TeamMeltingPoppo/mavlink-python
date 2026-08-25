@@ -1,6 +1,6 @@
 from .generated import mavlink as definition
 from .generated.mavlink import mavlink_map, MAVLink_message
-from .topic import MAVLinkTopic,MAVLinkSubscriber,MAVLinkHistory,MAVLinkStatus,MAVLinkRecorder,MAVLinkPublisher,MAVLinkConnection
+from .core import MAVLinkTopic,MAVLinkSubscriber,MAVLinkHistory,MAVLinkStatus,MAVLinkRecorder,MAVLinkPublisher,MAVLinkBridge
 from .transport.base import TransportBase
 from .node import Node
 
@@ -20,7 +20,7 @@ __all__ = [
     # information of topic
     "MAVLinkStatus",
     # transport layer
-    "MAVLinkConnection",
+    "MAVLinkBridge",
     "TransportBase",
     # node class
     "Node"

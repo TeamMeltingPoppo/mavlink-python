@@ -1,7 +1,7 @@
 from abc import ABC,abstractmethod
 from logging import getLogger
 from threading import Event
-from mavlink.topic import MAVLinkTopic
+from mavlink.core import MAVLinkTopic
 from mavlink.generated.mavlink import MAVLink
 
 class Node(ABC):

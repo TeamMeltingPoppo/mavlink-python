@@ -3,7 +3,7 @@ import threading
 import serial
 
 import mavlink
-from mavlink import MAVLinkConnection
+from mavlink import MAVLinkBridge
 from mavlink.transport import TransportSerial
 
 from logging import basicConfig, getLogger
@@ -40,15 +40,15 @@ if __name__ == "__main__":
         serialport=serial.Serial(port="COM5",baudrate=115200,timeout=0.1)
     )
 
-    connection=MAVLinkConnection(transport=transport,topic=mavlink_topic)
+    bridge=MAVLinkBridge(transport=transport,topic=mavlink_topic)
 
     stop_event = threading.Event()
 
     threads = [
         threading.Thread(
-            target=connection.run,
+            target=bridge.run,
             args=(stop_event,),
-            name="connection-serialport",
+            name="bridge-serialport",
         ),
         threading.Thread(
             target=display_subscriber,

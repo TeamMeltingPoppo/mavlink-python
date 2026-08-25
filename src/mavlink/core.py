@@ -24,8 +24,8 @@ class TopicItem:
 class MAVLinkPublisher:
     def __init__(self,topic:"MAVLinkTopic"):
         self.topic=topic
-    def publish(self,timestamp: int,message: mavlink.MAVLink_message) -> None:
-        self.topic.publish(timestamp, message)
+    def publish(self,timestamp: int,message: mavlink.MAVLink_message,source:object=None) -> None:
+        self.topic.publish(timestamp, message,source)
 
 class MAVLinkSubscriberBase(abc.ABC):
     """A subscriber to MAVLink messages based on msgid, sysid, and compid."""
@@ -98,13 +98,43 @@ class MAVLinkRecorder(MAVLinkSubscriberBase):
         self.file.parent.mkdir(parents=True, exist_ok=True)
         self.file.touch()
         self.lock=Lock()
+        self.parser=struct.Struct(">Q")
     def __push__(self, item):
         """Write the timestamp and message to the file."""
-        bytes_to_write = bytearray(struct.pack('>Q', item.timestamp)) + item.message.get_msgbuf()
+        bytes_to_write = bytearray(self.parser.pack(item.timestamp)) + item.message.get_msgbuf()
         with self.lock:
             if self.file:
                 with open(self.file, 'ab') as f:
                     f.write(bytes_to_write)
+
+
+class TLogReader():
+    def __init__(self,filepath:Path):
+        with filepath.open("rb") as f:
+            self.buffer=f.read()
+        self.idx=0
+        self.mav=mavlink.MAVLink(None)
+        self.parser=struct.Struct(">Q")
+    def __iter__(self):
+        return self
+    def __next__(self):
+        while (self.idx+20) < len(self.buffer):
+            idx_msg=self.idx+8
+            if self.buffer[idx_msg]==0xFD:
+                payload_length=self.buffer[idx_msg+1]
+                if len(self.buffer) < (idx_msg+payload_length+12):
+                    break
+                try:
+                    msg=self.mav.parse_char(self.buffer[idx_msg:idx_msg+payload_length+12])
+                except mavlink.MAVError:
+                    self.idx+=1
+                    continue
+                if msg:
+                    timestamp:int=self.parser.unpack(self.buffer[self.idx:self.idx+8])[0]
+                    self.idx=idx_msg+12+payload_length
+                    return timestamp,msg
+            self.idx+=1
+        raise StopIteration
 
 @dataclass(frozen=True)
 class MAVLinkStatusSnapshot:
@@ -130,7 +160,7 @@ class MAVLinkStatus:
                 last_received=self.last_received.copy()
             )
 
-class MAVLinkConnection:
+class MAVLinkBridge:
     def __init__(self,transport:TransportBase,topic:MAVLinkTopic,filter: Callable[[int, int, int], bool]|None=None):
         self.transport=transport
         self.reciever=transport.get_receiver()
@@ -140,7 +170,7 @@ class MAVLinkConnection:
         self.mav=mavlink.MAVLink(None)
         self.mav.robust_parsing=True
 
-    def run_rx(self,stop_event:Event):
+    def _run_rx(self,stop_event:Event):
         if not self.reciever:
             return
         while not stop_event.is_set():
@@ -154,7 +184,7 @@ class MAVLinkConnection:
             for message in messages:
                 self.topic.publish(timestamp=timestamp,message=message,source=self)
 
-    def run_tx(self, stop_event:Event):
+    def _run_tx(self, stop_event:Event):
         if not self.sender:
             return
         subscriber=self.topic.create_subscriber(filter=self.filter or (lambda msgid, sysid, compid: True))
@@ -168,8 +198,8 @@ class MAVLinkConnection:
         self.topic.unsubscribe(subscriber)
 
     def run(self,stop_event:Event):
-        thread_rx=Thread(target=self.run_rx,args=(stop_event,),name="thread_rx")
-        thread_tx=Thread(target=self.run_tx,args=(stop_event,),name="thread_tx")
+        thread_rx=Thread(target=self._run_rx,args=(stop_event,),name="thread_rx")
+        thread_tx=Thread(target=self._run_tx,args=(stop_event,),name="thread_tx")
         thread_rx.start()
         thread_tx.start()
         thread_rx.join()

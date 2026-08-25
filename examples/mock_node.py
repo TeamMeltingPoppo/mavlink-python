@@ -45,14 +45,14 @@ if __name__=="__main__":
     mavlink_topic = MAVLinkTopic()
 
     transport=TransportSerial(serialport=serial.Serial(port="COM5",baudrate=115200,timeout=0.1))
-    connection=mavlink.MAVLinkConnection(transport=transport,topic=mavlink_topic)
+    bridge=mavlink.MAVLinkBridge(transport=transport,topic=mavlink_topic)
 
     node=MockNode(topic=mavlink_topic)
 
     stop_event = threading.Event()
 
     threads = [
-        threading.Thread(target=connection.run,args=(stop_event,),name="serialport"),
+        threading.Thread(target=bridge.run,args=(stop_event,),name="serialport"),
         threading.Thread(target=node.run,args=(stop_event,),name=f"node({node.name})")
     ]
     

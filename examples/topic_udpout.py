@@ -47,16 +47,16 @@ if __name__=="__main__":
 
     transport_udp   =TransportUDPMulticast(sender=UDPSender('239.255.0.1',14550),receiver=None)
     transport_serial=TransportSerial(serialport=serial.Serial(port="COM5",baudrate=115200,timeout=0.1))
-    connection_udp   =mavlink.MAVLinkConnection(transport=transport_udp   ,topic=mavlink_topic)
-    connection_serial=mavlink.MAVLinkConnection(transport=transport_serial,topic=mavlink_topic)
+    bridge_udp   =mavlink.MAVLinkBridge(transport=transport_udp   ,topic=mavlink_topic)
+    bridge_serial=mavlink.MAVLinkBridge(transport=transport_serial,topic=mavlink_topic)
 
     stop_event = threading.Event()
 
     node=MockNode(topic=mavlink_topic)
 
     threads = [
-        threading.Thread(target=connection_udp.run,args=(stop_event,),name="connection-udp"),
-        threading.Thread(target=connection_serial.run,args=(stop_event,),name="connection-serialport"),
+        threading.Thread(target=bridge_udp.run,args=(stop_event,),name="bridge-udp"),
+        threading.Thread(target=bridge_serial.run,args=(stop_event,),name="bridge-serialport"),
         threading.Thread(target=node.run,args=(stop_event,),name=f"node({node.name})")
     ]
     

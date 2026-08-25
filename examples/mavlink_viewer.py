@@ -4,9 +4,10 @@ import tkinter as tk
 from tkinter import ttk
 import serial
 import serial.tools.list_ports
+from datetime import datetime
+from pathlib import Path
 
-import mavlink
-from mavlink import MAVLinkTopic, MAVLinkConnection, definition
+from mavlink import MAVLinkTopic, MAVLinkBridge, definition
 from mavlink.transport import TransportSerial
 
 
@@ -24,7 +25,7 @@ class MAVLinkViewerApp(tk.Tk):
         self.status = self.mavlink_topic.get_status()
 
         self.stop_event = threading.Event()
-        self.connection_thread = None
+        self.bridge_thread = None
         self.serialport = None
 
         self._build_ui()
@@ -34,9 +35,11 @@ class MAVLinkViewerApp(tk.Tk):
         self.after(200, self._update_status_display)
         self.protocol("WM_DELETE_WINDOW", self.on_closing)
 
+        self.recorder=self.mavlink_topic.create_record(Path("log")/f"{datetime.now().strftime("%Y%m%d_%H%M%S")}.tlog")
+
     def _build_ui(self):
         # 接続設定エリア
-        conn_frame = ttk.LabelFrame(self, text="Serial Connection")
+        conn_frame = ttk.LabelFrame(self, text="Serial Bridge")
         conn_frame.pack(fill="x", padx=10, pady=5)
 
         ttk.Label(conn_frame, text="Port:").pack(side="left", padx=(10, 2))
@@ -55,7 +58,7 @@ class MAVLinkViewerApp(tk.Tk):
         self.baud_combo.set("115200")
         self.baud_combo.pack(side="left", padx=5)
 
-        self.btn_connect = ttk.Button(conn_frame, text="Connect", command=self.toggle_connection)
+        self.btn_connect = ttk.Button(conn_frame, text="Connect", command=self.toggle_bridge)
         self.btn_connect.pack(side="left", padx=15)
 
         # MAVLink Status テーブル表示エリア (Treeview)
@@ -95,7 +98,7 @@ class MAVLinkViewerApp(tk.Tk):
         if ports and not self.port_combo.get():
             self.port_combo.set(ports[0])
 
-    def toggle_connection(self):
+    def toggle_bridge(self):
         if self.serialport and self.serialport.is_open:
             self.disconnect()
         else:
@@ -113,20 +116,20 @@ class MAVLinkViewerApp(tk.Tk):
             baud = int(baud_str)
             self.serialport = serial.Serial(port=port, baudrate=baud, timeout=0.1)
         except Exception as e:
-            self.status_var.set(f"Connection Failed: {e}")
+            self.status_var.set(f"Bridge Failed: {e}")
             return
 
         transport = TransportSerial(serialport=self.serialport)
-        connection = MAVLinkConnection(transport=transport, topic=self.mavlink_topic)
+        bridge = MAVLinkBridge(transport=transport, topic=self.mavlink_topic)
 
         self.stop_event.clear()
-        self.connection_thread = threading.Thread(
-            target=connection.run, 
+        self.bridge_thread = threading.Thread(
+            target=bridge.run, 
             args=(self.stop_event,), 
-            name="connection-serialport", 
+            name="bridge-serialport", 
             daemon=True
         )
-        self.connection_thread.start()
+        self.bridge_thread.start()
 
         # UI状態更新
         self.btn_connect.config(text="Disconnect")
@@ -137,9 +140,9 @@ class MAVLinkViewerApp(tk.Tk):
     def disconnect(self):
         self.stop_event.set()
 
-        self.connection_thread.join(0.1)
+        self.bridge_thread.join(0.1)
 
-        self.connection_thread = None
+        self.bridge_thread = None
         self.serialport = None
 
         self.btn_connect.config(text="Connect")
