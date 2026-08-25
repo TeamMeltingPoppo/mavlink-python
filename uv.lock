@@ -130,6 +130,11 @@ wheels = [
 name = "mavlink"
 source = { editable = "." }
 
+[package.optional-dependencies]
+serial = [
+    { name = "pyserial" },
+]
+
 [package.dev-dependencies]
 dev = [
     { name = "pymavlink" },
@@ -139,6 +144,8 @@ dev = [
 ]
 
 [package.metadata]
+requires-dist = [{ name = "pyserial", marker = "extra == 'serial'", specifier = ">=3.5" }]
+provides-extras = ["serial"]
 
 [package.metadata.requires-dev]
 dev = [

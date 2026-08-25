@@ -1,28 +1,12 @@
-import time
 import threading
 
 import serial
 
 import mavlink
-from mavlink import MAVLinkStream, definition, MAVLinkEndpoint
+from mavlink import MAVLinkConnection
+from mavlink.transport import TransportSerial
 
 from logging import basicConfig, getLogger
-
-def polling_thread(
-    mavlink_stream: MAVLinkStream,
-    serial_port: serial.Serial,
-    stop_event: threading.Event,
-):
-    endpoint=MAVLinkEndpoint(1,1)
-    while not stop_event.is_set():
-        if serial_port.in_waiting > 0:
-            data = serial_port.read()
-            if data:
-                msg_list=endpoint.parse(data)
-                if msg_list is not None:
-                    for msg in msg_list:
-                        mavlink_stream.publish(time.time_ns()//1000,msg)
-                        
 
 def display_subscriber(
     subscriber: mavlink.MAVLinkSubscriber,
@@ -30,12 +14,9 @@ def display_subscriber(
 ):
     logger = getLogger("subscriber")
     while not stop_event.is_set():
-        result = subscriber.get(timeout=0.0)
-
+        result = subscriber.get(timeout=0.01)
         if result:
-            timestamp, message = result
-            logger.info(f"Received message: {message}")
-        time.sleep(0.0001)  # Sleep briefly to avoid busy waiting
+            logger.info(f"Received message: {result.message}")
 
 if __name__ == "__main__":
 
@@ -45,24 +26,37 @@ if __name__ == "__main__":
     basicConfig(level="DEBUG",format="%(asctime)s [%(levelname)s %(name)s] %(message)s")
     logger = getLogger()
 
-    mavlink_data = mavlink.MAVLinkStream()
+    mavlink_topic = mavlink.MAVLinkTopic()
 
+    filepath=Path(f"{datetime.now().strftime('logs/log_%Y%m%d_%H%M%S')}.tlog")
+    # Record received MAVLink messages to a telemetry log.
+    mavlink_topic.create_record(filepath=filepath)
+
+    subscriber = mavlink_topic.create_subscriber(lambda msgid,sysid,compid :(sysid==1)and(compid==1))
     # subscribe HEARTBEAT messages
-    # subscriber = mavlink_data.subscribe(lambda msgid,sysid,compid :msgid==definition.MAVLINK_MSG_ID_HEARTBEAT)
-    subscriber = mavlink_data.subscribe(lambda msgid,sysid,compid :compid==1)
+    # subscriber = mavlink_topic.create_subscriber(lambda msgid,sysid,compid :msgid==mavlink.definition.MAVLINK_MSG_ID_HEARTBEAT)
 
-    serial_port = serial.Serial(
+    serialport = serial.Serial(
         port="COM5",
         baudrate=115200,
         timeout=0.1,
     )
+    
+    transport=TransportSerial(serialport=serialport)
+
+    connection=MAVLinkConnection(transport=transport,topic=mavlink_topic)
 
     stop_event = threading.Event()
 
     threads = [
         threading.Thread(
-            target=polling_thread,
-            args=(mavlink_data, serial_port, stop_event),
+            target=connection.run_rx,
+            args=(stop_event,),
+            name="mavlink-polling",
+        ),
+        threading.Thread(
+            target=connection.run_tx,
+            args=(stop_event,),
             name="mavlink-polling",
         ),
         threading.Thread(
@@ -86,6 +80,5 @@ if __name__ == "__main__":
         for thread in threads:
             thread.join()
 
-        mavlink_data.unsubscribe(subscriber)
-
-        serial_port.close()
+        mavlink_topic.unsubscribe(subscriber)
+        connection.close()
