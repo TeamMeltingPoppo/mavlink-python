@@ -119,8 +119,9 @@ class TLogReader():
         return self
     def __next__(self):
         while (self.idx+20) < len(self.buffer):
+            # MAVLinkのwire format : https://mavlink.io/en/guide/serialization.html
             idx_msg=self.idx+8
-            if self.buffer[idx_msg]==0xFD:
+            if self.buffer[idx_msg]==0xFD: # STX
                 payload_length=self.buffer[idx_msg+1]
                 if len(self.buffer) < (idx_msg+payload_length+12):
                     break
@@ -210,26 +211,32 @@ class MAVLinkTopic:
     """A wrapper around the MAVLink class to handle subscriptions and message parsing."""
     def __init__(self):
         self.subscribers : set[MAVLinkSubscriberBase] = set()
+        self.lock : Lock = Lock()
         self.logger = getLogger(__name__)
         self.status = MAVLinkStatus()  # Initialize a single MAVLinkStatus instance for tracking message status
     def create_subscriber(self, filter:Callable[[int,int,int],bool],maxsize:int=100) -> MAVLinkSubscriber:
         subscriber = MAVLinkSubscriber(filter,maxsize=maxsize)
-        self.subscribers.add(subscriber)
+        with self.lock:
+            self.subscribers.add(subscriber)
         return subscriber
     def create_history_subscriber(self,filter:Callable[[int,int,int],bool],duration:int=1000_000,maxsize:int=1000) -> MAVLinkHistory:
         history_subscriber = MAVLinkHistory(filter,duration=duration,maxsize=maxsize)
-        self.subscribers.add(history_subscriber)
+        with self.lock:
+            self.subscribers.add(history_subscriber)
         return history_subscriber
     def create_record(self,filepath:Path)->MAVLinkRecorder:
         recorder = MAVLinkRecorder(filepath=filepath)
-        self.subscribers.add(recorder)
+        with self.lock:
+            self.subscribers.add(recorder)
         return recorder
     def unsubscribe(self, subscriber:MAVLinkSubscriberBase):
-        self.subscribers.discard(subscriber)
+        with self.lock:
+            self.subscribers.discard(subscriber)
     def publish(self,timestamp:int,message:mavlink.MAVLink_message,source:object=None):
         self.status.update(message.get_msgId(), message.get_srcSystem(), message.get_srcComponent(), timestamp)
-        for subscriber in self.subscribers:
-            subscriber.push(TopicItem(timestamp=timestamp,message=message,source=source))
+        with self.lock:
+            for subscriber in self.subscribers:
+                subscriber.push(TopicItem(timestamp=timestamp,message=message,source=source))
     def create_publisher(self):
         return MAVLinkPublisher(self)
     def get_status(self) -> MAVLinkStatus:

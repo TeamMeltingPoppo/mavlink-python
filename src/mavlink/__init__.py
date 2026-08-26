@@ -1,6 +1,6 @@
 from .generated import mavlink as definition
 from .generated.mavlink import mavlink_map, MAVLink_message
-from .core import MAVLinkTopic,MAVLinkSubscriber,MAVLinkHistory,MAVLinkStatus,MAVLinkRecorder,MAVLinkPublisher,MAVLinkBridge
+from .core import MAVLinkTopic,MAVLinkSubscriber,MAVLinkHistory,MAVLinkStatus,MAVLinkRecorder,MAVLinkPublisher,MAVLinkBridge,TLogReader
 from .transport.base import TransportBase
 from .node import Node
 
@@ -17,6 +17,8 @@ __all__ = [
     "MAVLinkSubscriber",
     "MAVLinkHistory",
     "MAVLinkRecorder",
+    # tlog reader class
+    "TLogReader",
     # information of topic
     "MAVLinkStatus",
     # transport layer
