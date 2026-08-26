@@ -4,7 +4,7 @@ import threading
 import time
 from logging import getLogger,basicConfig
 
-def log_to_topic(
+def replay_log(
     publisher:MAVLinkPublisher,
     stop_event: threading.Event,
     start_timestamp:int=1787699674980000,
@@ -42,7 +42,7 @@ if __name__=="__main__":
 
     threads = [
         threading.Thread(
-            target=log_to_topic,
+            target=replay_log,
             args=(publisher,stop_event,),
             name="log to topic",
         ),

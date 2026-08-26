@@ -35,7 +35,7 @@ class MAVLinkViewerApp(tk.Tk):
         self.after(200, self._update_status_display)
         self.protocol("WM_DELETE_WINDOW", self.on_closing)
 
-        self.recorder=self.mavlink_topic.create_record(Path("logs")/f"{datetime.now().strftime("%Y%m%d_%H%M%S")}.tlog")
+        self.recorder=self.mavlink_topic.create_record(Path("logs")/f"log_{datetime.now().strftime("%Y%m%d_%H%M%S")}.tlog")
 
     def _build_ui(self):
         # 接続設定エリア
