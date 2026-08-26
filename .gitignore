@@ -12,3 +12,7 @@ wheels/
 # Logs
 
 logs/log_*.tlog
+
+# generated modules
+
+src/mavlink/generated/*
