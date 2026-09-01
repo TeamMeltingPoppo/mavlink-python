@@ -27,8 +27,11 @@ jobs:
       - name: Set up Python
         run: uv python install 3.14
 
+      - name: Generate
+        run: uv run --locked python scripts/generate.py
+
       - name: Create package
-        run: uv run --locked python scripts/generate.py && uv build --wheel
+        run: uv build --wheel
 
       - name: Create release
         uses: softprops/action-gh-release@v3
