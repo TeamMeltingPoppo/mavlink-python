@@ -2,7 +2,7 @@ from abc import ABC,abstractmethod
 from logging import getLogger
 from threading import Event
 from mavlink.core import MAVLinkTopic
-from mavlink.generated.mavlink import MAVLink
+from mavlink.definition import MAVLink
 
 class Node(ABC):
     """各Noneを表すMockクラス。MAVLink_message の送信と受信を行う"""

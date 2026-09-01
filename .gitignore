@@ -15,4 +15,4 @@ logs/log_*.tlog
 
 # generated modules
 
-src/mavlink/generated/*
+src/mavlink/definition.py

@@ -73,13 +73,8 @@ jobs:
         if: steps.dialect.outputs.changed == 'true'
         run: uv python install 3.14
 
-      - name: Generate
-        if: steps.dialect.outputs.changed == 'true'
-        run: uv run --locked python scripts/generate.py
-
       - name: Create package
-        if: steps.dialect.outputs.changed == 'true'
-        run: uv build
+        run: uv run --locked python scripts/generate.py && uv build --wheel
 
       - name: Create release
         if: steps.dialect.outputs.changed == 'true'

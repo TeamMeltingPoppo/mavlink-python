@@ -11,7 +11,7 @@ import time
 from threading import Lock,Event,Thread
 import abc
 
-from .generated import mavlink
+import mavlink.definition as mavlink
 
 from .transport.base import TransportBase
 

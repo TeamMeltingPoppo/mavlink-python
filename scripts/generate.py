@@ -4,7 +4,6 @@ MAVLinkのXML定義ファイルからPythonコードを生成しpathが通るよ
 """
 from pathlib import Path
 from logging import getLogger, basicConfig
-import shutil
 from pymavlink.generator import mavgen
 
 def generate_mavlink_bindings():
@@ -13,10 +12,8 @@ def generate_mavlink_bindings():
     logger = getLogger("generate_mavlink_bindings")
     basicConfig(level="INFO", format="%(asctime)s [%(levelname)s] %(message)s")
 
-    mavlink_dir = ROOT_DIR / "src" / "mavlink" / "generated"
-    shutil.rmtree(mavlink_dir, ignore_errors=True)
-    mavlink_dir.mkdir(parents=True, exist_ok=True)
-    opts = mavgen.Opts( str(mavlink_dir / "mavlink" ),"2.0","Python3")
+    mavlink_dir = ROOT_DIR / "src" / "mavlink"
+    opts = mavgen.Opts( str(mavlink_dir / "definition" ),"2.0","Python3")
     mavgen.mavgen(opts,[ROOT_DIR / "mavlink-dialect" / "dialects" / "swingby.xml"])
     logger.info(f"mavlinkのPythonバインディングを生成しました: {mavlink_dir}")
 
