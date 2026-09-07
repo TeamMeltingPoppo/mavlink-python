@@ -69,17 +69,9 @@ jobs:
           version: "latest"
           enable-cache: true
 
-      - name: Set up Python
-        if: steps.dialect.outputs.changed == 'true'
-        run: uv python install 3.14
-
-      - name: Generate
-        if: steps.dialect.outputs.changed == 'true'
-        run: uv run --no-project --with pymavlink==2.4.49 python scripts/generate.py
-
       - name: Create package
         if: steps.dialect.outputs.changed == 'true'
-        run: uv build --wheel
+        run: sh scripts/create_package.sh
 
       - name: Create release
         if: steps.dialect.outputs.changed == 'true'

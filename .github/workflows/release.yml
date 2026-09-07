@@ -24,14 +24,8 @@ jobs:
           version: "latest"
           enable-cache: true
 
-      - name: Set up Python
-        run: uv python install 3.14
-
-      - name: Generate
-        run: uv run --no-project --with pymavlink==2.4.49 python scripts/generate.py
-
       - name: Create package
-        run: uv build --wheel
+        run: sh scripts/create_package.sh
 
       - name: Create release
         uses: softprops/action-gh-release@v3

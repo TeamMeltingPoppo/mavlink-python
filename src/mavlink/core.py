@@ -75,7 +75,7 @@ class MAVLinkHistory(MAVLinkSubscriberBase):
             sync_timestamp = self.history[-1].timestamp if self.history else 0.0
         while self.history and (sync_timestamp - self.history[0].timestamp) > self.__duration:
             self.history.popleft()
-    def __push__(self,item:tuple[int, mavlink.MAVLink_message]):
+    def __push__(self,item:TopicItem):
         self.__queue.put(item)
     def items(self) -> list[TopicItem]:
         """Get the history of messages."""
@@ -84,7 +84,7 @@ class MAVLinkHistory(MAVLinkSubscriberBase):
         """Clear the history of messages."""
         self.history.clear()
         self.__queue.queue.clear()
-    def latest(self) -> Optional[tuple[int, mavlink.MAVLink_message]]:
+    def latest(self) -> Optional[TopicItem]:
         """Get the latest message from the history."""
         if self.history:
             return self.history[-1]
