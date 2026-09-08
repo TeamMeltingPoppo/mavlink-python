@@ -7,22 +7,22 @@ import serial.tools.list_ports
 from datetime import datetime
 from pathlib import Path
 
-from mavlink import MAVLinkTopic, MAVLinkBridge, definition
+from mavlink import MAVLinkTopic, MAVLinkBridge, MAVLinkHistory, definition
 from mavlink.transport import TransportSerial
 
 
 class MAVLinkViewerApp(tk.Tk):
     """
-    MAVLinkStatus の観測状況 (snapshot) を Treeview テーブルで表示する例
-    (Topic / Status をアプリ起動時に1度だけ作成して再利用する構成)
+    MAVLinkStatus の観測状況 (snapshot) とHistory を Treeviewで表示する例
     """
     def __init__(self):
         super().__init__()
         self.title("MAVLink Status Monitor")
-        self.geometry("600x400")
+        self.geometry("800x400")
 
         self.mavlink_topic = MAVLinkTopic()
         self.status = self.mavlink_topic.get_status()
+        self.mavlink_history : MAVLinkHistory|None = None
 
         self.stop_event = threading.Event()
         self.bridge_thread = None
@@ -33,12 +33,15 @@ class MAVLinkViewerApp(tk.Tk):
         
         # UI更新ループを開始 (200ms間隔)
         self.after(200, self._update_status_display)
+        self.after(10, self._update_subscriber)
         self.protocol("WM_DELETE_WINDOW", self.on_closing)
 
         self.recorder=self.mavlink_topic.create_record(Path("logs")/f"log_{datetime.now().strftime("%Y%m%d_%H%M%S")}.tlog")
 
     def _build_ui(self):
-        # 接続設定エリア
+
+        # シリアルポート設定エリア
+
         conn_frame = ttk.LabelFrame(self, text="Serial Bridge")
         conn_frame.pack(fill="x", padx=10, pady=5)
 
@@ -61,35 +64,56 @@ class MAVLinkViewerApp(tk.Tk):
         self.btn_connect = ttk.Button(conn_frame, text="Connect", command=self.toggle_bridge)
         self.btn_connect.pack(side="left", padx=15)
 
-        # MAVLink Status テーブル表示エリア (Treeview)
-        table_frame = ttk.LabelFrame(self, text="Observed Messages (MAVLink Status)")
-        table_frame.pack(fill="both", expand=True, padx=10, pady=5)
+        status_frame = ttk.Frame(self)
+        status_frame.pack(fill="both",expand=True)
 
-        columns = ("msgid", "msgname", "sysid", "compid", "last_timestamp")
-        self.tree = ttk.Treeview(table_frame, columns=columns, show="headings", selectmode="browse")
+        # MAVLink Messages テーブル表示エリア
 
-        self.tree.heading("msgid", text="Msg ID")
-        self.tree.heading("msgname", text="Message Name")
-        self.tree.heading("sysid", text="Sys ID")
-        self.tree.heading("compid", text="Comp ID")
-        self.tree.heading("last_timestamp", text="Latest Timestamp (us)")
+        messages_frame = ttk.LabelFrame(status_frame,text="Messages")
+        messages_frame.pack(fill="both",side="left",expand=True, padx=10, pady=5)
 
-        self.tree.column("msgid", width=40, anchor="center")
-        self.tree.column("msgname", width=80, anchor="w")
-        self.tree.column("sysid", width=40, anchor="center")
-        self.tree.column("compid", width=40, anchor="center")
-        self.tree.column("last_timestamp", width=80, anchor="e")
+        self.tree_columns = ("msgid", "msgname", "sysid", "compid", "timestamp")
+        self.tree_messages = ttk.Treeview(messages_frame, columns=self.tree_columns, show="headings", selectmode="browse")
 
-        # スクロールバー設定
-        scrollbar = ttk.Scrollbar(table_frame, orient="vertical", command=self.tree.yview)
-        self.tree.configure(yscrollcommand=scrollbar.set)
+        self.tree_messages.heading("msgid", text="Msg ID")
+        self.tree_messages.heading("msgname", text="Message Name")
+        self.tree_messages.heading("sysid", text="Sys ID")
+        self.tree_messages.heading("compid", text="Comp ID")
+        self.tree_messages.heading("timestamp", text="Timestamp (us)")
+
+        self.tree_messages.column("msgid", minwidth=30,width=30, anchor="center")
+        self.tree_messages.column("msgname", minwidth=80,width=80, anchor="w")
+        self.tree_messages.column("sysid", minwidth=30,width=30, anchor="center")
+        self.tree_messages.column("compid", minwidth=30,width=30, anchor="center")
+        self.tree_messages.column("timestamp", minwidth=120,width=120, anchor="e")
+
+        self.tree_messages.bind("<<TreeviewSelect>>", self.on_select_tree)
+
+        messages_scrollbar = ttk.Scrollbar(messages_frame, orient="vertical", command=self.tree_messages.yview)
+        self.tree_messages.configure(yscrollcommand=messages_scrollbar.set)
         
-        self.tree.pack(side="left", fill="both", expand=True)
-        scrollbar.pack(side="right", fill="y")
+        self.tree_messages.pack(side="left", fill="both", expand=True)
+        messages_scrollbar.pack(side="right", fill="y")
+
+        # MAVLink Fields テーブル表示エリア
+        fields_frame=ttk.LabelFrame(status_frame,text="Fields")
+        fields_frame.pack(side="right",fill="both",padx=10,pady=5,expand=True)
+        self.tree_fields = ttk.Treeview(fields_frame, columns=("name","value","unit"), show="headings", selectmode="browse")
+        self.tree_fields.heading("name", text="Field name")
+        self.tree_fields.heading("value", text="Value")
+        self.tree_fields.heading("unit", text="Unit")
+        self.tree_fields.column("name",anchor="w",minwidth=40,width=40)
+        self.tree_fields.column("value",anchor="e",minwidth=80,width=80)
+        self.tree_fields.column("unit",anchor="w",minwidth=20,width=20)
+
+        fields_scrollbar = ttk.Scrollbar(fields_frame, orient="vertical", command=self.tree_fields.yview)
+        self.tree_fields.configure(yscrollcommand=fields_scrollbar.set)
+        self.tree_fields.pack(side="left", fill="both", expand=True)
+        fields_scrollbar.pack(side="right", fill="y")
 
         # ステータスバー
         self.status_var = tk.StringVar(value="Disconnected")
-        status_bar = ttk.Label(self, textvariable=self.status_var, relief="sunken", anchor="w")
+        status_bar = ttk.Label(self, textvariable=self.status_var)
         status_bar.pack(fill="x", side="bottom", padx=10, pady=5)
 
     def _refresh_ports(self):
@@ -103,6 +127,20 @@ class MAVLinkViewerApp(tk.Tk):
             self.disconnect()
         else:
             self.connect()
+
+    def on_select_tree(self,event):
+        selection=self.tree_messages.selection()
+        if not selection:
+            return
+        item_id = selection[0]
+        item = self.tree_messages.item(item_id)
+        if self.mavlink_history:
+            self.mavlink_topic.unsubscribe(self.mavlink_history)
+        self.mavlink_history = self.mavlink_topic.create_history_subscriber(
+            filter=lambda msgid,sysid,compid,target_msgid=item["values"][0],target_sysid=item["values"][2],target_compid=item["values"][3]:
+            (msgid==target_msgid)and(sysid==target_sysid)and(compid==target_compid),
+            duration=5_000_000
+        )
 
     def connect(self):
         port = self.port_combo.get()
@@ -151,21 +189,43 @@ class MAVLinkViewerApp(tk.Tk):
         self.status_var.set("Disconnected")
 
     def _update_status_display(self):
-        """MAVLinkStatus の snapshot を取得してテーブルを更新"""
+        """MAVLinkStatus の snapshot を取得してMessagesを更新"""
         snapshot = self.status.snapshot()
 
         for (msgid, sysid, compid) in snapshot.observed_messages:
             msg_name = definition.mavlink_map[msgid].msgname if msgid in definition.mavlink_map else "UNKNOWN"
             last_time = snapshot.last_received.get((msgid, sysid, compid), 0)
 
-            item_id = f"{msgid}_{sysid}_{compid}"
-            if self.tree.exists(item_id):
-                self.tree.item(item_id, values=(msgid, msg_name, sysid, compid, last_time))
+            item_id = f"{msgid=}|{sysid=}|{compid=}"
+            if self.tree_messages.exists(item_id):
+                self.tree_messages.item(item_id, values=(msgid, msg_name, sysid, compid, last_time))
             else:
-                self.tree.insert("", "end", iid=item_id, values=(msgid, msg_name, sysid, compid, last_time))
+                self.tree_messages.insert("", "end", iid=item_id, values=(msgid, msg_name, sysid, compid, last_time))
 
         # 次回の画面更新をスケジューリング
-        self.after(200, self._update_status_display)
+        self.after(100, self._update_status_display)
+
+    def _update_subscriber(self):
+        """MAVLinkStatus の snapshot を取得してFieldsを更新"""
+        if self.mavlink_history is not None:
+            self.mavlink_history.sync()
+            msg=self.mavlink_history.latest()
+            if msg is not None:
+                fieldnames=msg.message.get_fieldnames()
+                for name in fieldnames:
+                    value=msg.message.format_attr(name)
+                    unit=msg.message.fieldunits_by_name.get(name,"")
+                    if self.tree_fields.exists(name):
+                        self.tree_fields.item(name,values=(name,value,unit))
+                    else:
+                        self.tree_fields.insert("","end",iid=name,values=(name,value,unit))
+                keys=self.tree_fields.get_children()
+                for key in keys:
+                    if key not in fieldnames:
+                        self.tree_fields.delete(key)
+
+        self.after(100,self._update_subscriber)
+
 
     def on_closing(self):
         if self.serialport and self.serialport.is_open:
