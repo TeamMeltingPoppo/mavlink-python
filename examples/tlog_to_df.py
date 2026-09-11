@@ -19,7 +19,7 @@ def log_to_dataframes(filepath:Path)->dict[str,dict[tuple[int,int],pd.DataFrame]
         for key in records[msg_type].keys():
             dict_df[msg_type][key]=pd.DataFrame(
                 records[msg_type][key][1],
-                index=pd.to_datetime(records[msg_type][key][0],unit="us",utc=True)
+                index=records[msg_type][key][0]
             )
     return dict_df
 

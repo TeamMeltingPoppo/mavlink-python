@@ -12,17 +12,34 @@ class UDPSender(Sender):
         self.tx_sock.close()
 
 class UDPMulticastReceiver(Receiver):
-    def __init__(self,multicast_group:str,port:int):
-        self.multicast_group=multicast_group
-        self.port=port
-        local_address   = socket.gethostbyname(socket.gethostname())
+    def __init__(
+        self,
+        multicast_group: str,
+        port: int,
+        interface: str | None = None,
+    ):
+        self.multicast_group = multicast_group
+        self.port = port
 
-        self.rx_sock=socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        self.rx_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        self.rx_sock.bind(('', port))
-        self.rx_sock.setsockopt(socket.IPPROTO_IP,
+        self.rx_sock = socket.socket(
+            socket.AF_INET,
+            socket.SOCK_DGRAM,
+        )
+        self.rx_sock.setsockopt(
+            socket.SOL_SOCKET,
+            socket.SO_REUSEADDR,
+            1,
+        )
+        self.rx_sock.bind(("", port))
+
+        interface = interface or "0.0.0.0"
+
+        self.rx_sock.setsockopt(
+            socket.IPPROTO_IP,
             socket.IP_ADD_MEMBERSHIP,
-            socket.inet_aton(multicast_group) + socket.inet_aton(local_address))
+            socket.inet_aton(multicast_group)
+            + socket.inet_aton(interface),
+        )
     def recv(self, timeout):
         self.rx_sock.settimeout(timeout)
         try:
@@ -36,6 +53,11 @@ class TransportUDPMulticast(TransportBase):
     def __init__(self,sender:UDPSender|None,receiver:UDPMulticastReceiver|None):
         self.sender=sender
         self.receiver=receiver
+    def get_source_id(self):
+        if self.receiver:
+            return f"udp:{self.receiver.multicast_group}:{self.receiver.port}"
+        else:
+            return "udp:unknown"
     def get_sender(self):
         return self.sender
     def get_receiver(self):

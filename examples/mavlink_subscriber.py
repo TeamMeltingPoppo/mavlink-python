@@ -32,9 +32,9 @@ if __name__ == "__main__":
     # Record received MAVLink messages to a telemetry log.
     mavlink_topic.create_record(filepath=filepath)
 
-    subscriber = mavlink_topic.create_subscriber(lambda msgid,sysid,compid :(sysid==1)and(compid==1))
+    subscriber = mavlink_topic.create_subscriber(lambda item :(item.message.get_srcSystem()==1)and(item.message.get_srcComponent()==1))
     # subscribe HEARTBEAT messages
-    # subscriber = mavlink_topic.create_subscriber(lambda msgid,sysid,compid :msgid==mavlink.definition.MAVLINK_MSG_ID_HEARTBEAT)
+    # subscriber = mavlink_topic.create_subscriber(lambda item :item.message.get_msgId()==mavlink.definition.MAVLINK_MSG_ID_HEARTBEAT)
 
     transport=TransportSerial(
         serialport=serial.Serial(port="COM5",baudrate=115200,timeout=0.1)

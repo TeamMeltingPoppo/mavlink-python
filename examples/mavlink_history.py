@@ -45,7 +45,7 @@ if __name__ == "__main__":
     mavlink_topic = MAVLinkTopic()
 
     status = mavlink_topic.get_status()
-    subscriber = mavlink_topic.create_history_subscriber(lambda msgid,sysid,compid :msgid==definition.MAVLINK_MSG_ID_HEARTBEAT,duration=5000_000)
+    subscriber = mavlink_topic.create_history_subscriber(lambda item :item.message.get_msgId()==definition.MAVLINK_MSG_ID_HEARTBEAT,duration=5000_000)
 
     transport=TransportSerial(
         serialport=serial.Serial(port="COM5",baudrate=115200,timeout=0.1)

@@ -13,6 +13,9 @@ class Receiver(ABC):
 
 class TransportBase(ABC):
     @abstractmethod
+    def get_source_id(self)->str:
+        ...
+    @abstractmethod
     def get_sender(self)->Sender | None:
         ...
     @abstractmethod

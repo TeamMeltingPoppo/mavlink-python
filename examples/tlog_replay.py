@@ -15,7 +15,7 @@ def replay_log(
     for timestamp,message in reader:
         if stop_event.is_set():
             return
-        publisher.publish(timestamp=timestamp,message=message,source=reader)
+        publisher.publish(timestamp=timestamp,message=message)
         time.sleep((timestamp - prev_timestamp)/1e6)
         prev_timestamp=timestamp
     logger.info("finished")
@@ -35,8 +35,8 @@ if __name__=="__main__":
     logger=getLogger()
 
     topic=MAVLinkTopic()
-    subscriber=topic.create_subscriber(lambda msgid,sysid,compid:(msgid==definition.MAVLINK_MSG_ID_GPS_RAW_INT)and(sysid==1)and(compid==1), 10000)
-    publisher=topic.create_publisher()
+    subscriber=topic.create_subscriber(lambda item:(item.message.get_msgId()==definition.MAVLINK_MSG_ID_GPS_RAW_INT)and(item.message.get_srcSystem()==1)and(item.message.get_srcComponent()==1), 10000)
+    publisher=topic.create_publisher("tlog_replay")
 
     stop_event = threading.Event()
 

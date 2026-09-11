@@ -137,8 +137,8 @@ class MAVLinkViewerApp(tk.Tk):
         if self.mavlink_history:
             self.mavlink_topic.unsubscribe(self.mavlink_history)
         self.mavlink_history = self.mavlink_topic.create_history_subscriber(
-            filter=lambda msgid,sysid,compid,target_msgid=item["values"][0],target_sysid=item["values"][2],target_compid=item["values"][3]:
-            (msgid==target_msgid)and(sysid==target_sysid)and(compid==target_compid),
+            filter=lambda item,target_msgid=item["values"][0],target_sysid=item["values"][2],target_compid=item["values"][3]:
+            item.message.get_msgId() == target_msgid and item.message.get_srcSystem() == target_sysid and item.message.get_srcComponent() == target_compid,
             duration=5_000_000
         )
 

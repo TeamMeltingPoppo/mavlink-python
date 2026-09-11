@@ -19,6 +19,8 @@ class SerialReceiver(Receiver):
 class TransportSerial(TransportBase):
     def __init__(self,serialport:serial.Serial):
         self.serialport=serialport
+    def get_source_id(self):
+        return f"serial:{self.serialport.port}"
     def get_receiver(self):
         return SerialReceiver(serialport=self.serialport)
     def get_sender(self):

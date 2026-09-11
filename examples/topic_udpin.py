@@ -10,15 +10,15 @@ class MockNode(Node):
     def __init__(self,topic:MAVLinkTopic):
         super().__init__(topic=topic,name="Node1",sys_id=255,comp_id=2)
     def setup(self):
-        self.subscriber=self.topic.create_subscriber(lambda msgid,sysid,compid:True)
-        self.publisher=self.topic.create_publisher()
+        self.subscriber=self.topic.create_subscriber(lambda item:True)
+        self.publisher=self.topic.create_publisher(source_id=self.name)
         self.last_send_heartbeat=time.time()
         self.logger.info("This is Monitor")
     def loop(self):
         for _ in range(1000):
             result = self.subscriber.get(0.01)
             if result:
-                if result.source!=self:
+                if result.source_id!=self:
                     msg=result.message
                     self.logger.info(f"(sysid:{msg.get_srcSystem()},compid:{msg.get_srcComponent()}) --(msgId:{msg.get_msgId():3d})-> (sysid:{self.sys_id},compid:{self.comp_id})")
             else:
@@ -33,7 +33,7 @@ class MockNode(Node):
                 mavlink_version=3
             )
             heartbeat.pack(self.mav)
-            self.topic.publish(timestamp=time.time_ns()//1000,message=heartbeat,source=self)
+            self.publisher.publish(timestamp=time.time_ns()//1000,message=heartbeat)
             self.last_send_heartbeat=time.time()
 
 
