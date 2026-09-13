@@ -1,8 +1,15 @@
 import socket
-from mavlink.transport.base import TransportBase,Receiver,Sender
+from mavlink.core import TransportBase,Receiver,Sender
 
 class UDPSender(Sender):
+    """UDPで送信するためのSenderの実装"""
     def __init__(self,address:str,port:int):
+        """UDPで送信するためのSenderの実装
+
+        Args:
+            address (str): 送信先のaddress
+            port (int): 送信先のport
+        """
         self.address=address
         self.port=port
         self.tx_sock=socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -12,12 +19,20 @@ class UDPSender(Sender):
         self.tx_sock.close()
 
 class UDPMulticastReceiver(Receiver):
+    """UDP multicastで受信するためのReceiverの実装"""
     def __init__(
         self,
         multicast_group: str,
         port: int,
         interface: str | None = None,
     ):
+        """UDP multicastで受信するためのReceiverの実装
+
+        Args:
+            multicast_group (str): 受信するaddress
+            port (int): 受信するport
+            interface (str | None, optional): multicast_groupに対応づけるaddress
+        """
         self.multicast_group = multicast_group
         self.port = port
 
@@ -50,7 +65,14 @@ class UDPMulticastReceiver(Receiver):
         self.rx_sock.close()
 
 class TransportUDPMulticast(TransportBase):
+    """UDPで送受信を行うためのTransportの実装"""
     def __init__(self,sender:UDPSender|None,receiver:UDPMulticastReceiver|None):
+        """UDPで送受信を行うためのTransportの実装
+
+        Args:
+            sender (UDPSender | None): UDPで送信を行うためのSenderのインスタンス。Noneが指定された場合は送信を行わない
+            receiver (UDPMulticastReceiver | None): UDPで受信を行うためのReceiverのインスタンス。Noneの場合は受信を行わない。
+        """
         self.sender=sender
         self.receiver=receiver
     def get_source_id(self):

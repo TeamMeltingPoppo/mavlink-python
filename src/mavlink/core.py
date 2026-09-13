@@ -1,6 +1,6 @@
 import struct
 from pathlib import Path
-from typing import Callable,Optional
+from typing import Callable,Optional,Sequence
 from pathlib import Path
 from logging import getLogger
 from dataclasses import dataclass
@@ -12,27 +12,29 @@ from threading import Lock,Event,Thread
 import abc
 
 import mavlink.definition as mavlink
-
-from .transport.base import TransportBase
-
 @dataclass(frozen=True)
 class TopicItem:
-    """A data class representing a MAVLink message with its timestamp and source ID."""
+    """Topic内でやり取りされるデータ"""
     timestamp: int
     message: mavlink.MAVLink_message
     source_id: str
 
 class MAVLinkPublisher:
-    """A publisher that sends MAVLink messages to a topic."""
+    """TopicへMAVLink Messageを送信するPublisher"""
     def __init__(self,topic:"MAVLinkTopic",source_id:str):
         self.topic=topic
         self.source_id=source_id
     def publish(self,timestamp: int,message: mavlink.MAVLink_message) -> None:
-        """Publish a MAVLink message to the topic."""
+        """Topicへメッセージをpublishする
+
+        Args:
+            timestamp (int): メッセージのtimestamp
+            message (mavlink.MAVLink_message): 送信するメッセージ
+        """
         self.topic._publish(timestamp, message,self.source_id)
 
 class MAVLinkSubscriberBase(abc.ABC):
-    """A subscriber to MAVLink messages based on msgid, sysid, and compid."""
+    # TopicからFilteringしてMAVLink Messageを受信するSubscriber基底class
     def __init__(self, filter:Callable[[TopicItem],bool]):
         self.filter=filter
     def push(self,item:TopicItem):
@@ -43,33 +45,40 @@ class MAVLinkSubscriberBase(abc.ABC):
         ...
 
 class MAVLinkSubscriber(MAVLinkSubscriberBase):
-    """A subscriber that only keeps the latest message."""
+    """TopicからMAVLink Messageを受信するSubscriber"""
     def __init__(self, filter:Callable[[TopicItem],bool],maxsize:int=10000):
         super().__init__(filter=filter)
-        self.__latest_msg : Optional[TopicItem] = None
         self.__queue : Queue[TopicItem] = Queue(maxsize=maxsize)
     def __push__(self,item:TopicItem):
         self.__queue.put(item)
     def get(self,timeout:Optional[float]=None) -> Optional[TopicItem]:
-        """Get the next message from the queue, or None if the queue is empty."""
+        """timeoutで指定した時間内でTopicからメッセージを受け取る
+
+        Args:
+            timeout (Optional[float], optional): Timeoutするまでの時間。 Defaults to None.
+
+        Returns:
+            Optional[TopicItem]: 受信したメッセージ。指定された時間内に受信できなければNoneが返される。
+        """
         try:
             item = self.__queue.get(timeout=timeout)
-            self.__latest_msg = item
             return item
         except Empty:
             return None
-    def latest(self) -> Optional[TopicItem]:
-        return self.__latest_msg
 
 class MAVLinkHistory(MAVLinkSubscriberBase):
-    """A subscriber that keeps a history of messages."""
-    def __init__(self, filter:Callable[[TopicItem],bool],duration:int=1000_000,maxsize:int=10000):
+    """Topicから受信したMAVLink Messageの履歴を保持するSubscriber"""
+    def __init__(self, filter:Callable[[TopicItem],bool],duration:int=1000_000,maxsize:int=None):
         super().__init__(filter=filter)
         self.__duration = duration
         self.__queue : Queue[TopicItem] = Queue(maxsize=maxsize)
         self.history : deque[TopicItem] = deque(maxlen=maxsize)
     def sync(self,sync_timestamp:Optional[int]=None):
-        """Update the history with the latest message."""
+        """MAVLink MessageのHistoryと最新のメッセージを更新する
+
+        Args:
+            sync_timestamp (Optional[int], optional): Historyが保持するメッセージの時刻の基準値。Noneを指定すると最新のメッセージのtimestampを基準とする。 Defaults to None.
+        """
         while not self.__queue.empty():
             item = self.__queue.get()
             self.history.append(item)
@@ -82,22 +91,29 @@ class MAVLinkHistory(MAVLinkSubscriberBase):
     def __push__(self,item:TopicItem):
         self.__queue.put(item)
     def items(self) -> list[TopicItem]:
-        """Get the history of messages."""
+        """保持しているHistoryを取得する
+
+        Returns:
+            list[TopicItem]: 保持しているHistory
+        """
         return self.history
     def clear(self):
-        """Clear the history of messages."""
+        """Historyをclearする"""
         self.history.clear()
         self.__queue.queue.clear()
     def latest(self) -> Optional[TopicItem]:
-        """Get the latest message from the history."""
+        """保持している最新のメッセージを取得する
+
+        Returns:
+            Optional[TopicItem]: 保持している最新のメッセージ。何もメッセージを受け取っていなければNoneを返す。
+        """
         if self.history:
             return self.history[-1]
         return None
 
 class MAVLinkRecorder(MAVLinkSubscriberBase):
-    """A subscriber that records MAVLink messages to a file."""
+    """受信したMAVLinkMessageをTlog形式でfileに保存するSubscriber"""
     def __init__(self, filepath:Path):
-        """Set the file to write MAVLink messages to."""
         super().__init__(lambda _item:True)
         self.file = filepath
         self.file.parent.mkdir(parents=True, exist_ok=True)
@@ -105,7 +121,7 @@ class MAVLinkRecorder(MAVLinkSubscriberBase):
         self.lock=Lock()
         self.parser=struct.Struct(">Q")
     def __push__(self, item):
-        """Write the timestamp and message to the file."""
+        # Write the timestamp and message to the file.
         bytes_to_write = bytearray(self.parser.pack(item.timestamp)) + item.message.get_msgbuf()
         with self.lock:
             if self.file:
@@ -114,8 +130,21 @@ class MAVLinkRecorder(MAVLinkSubscriberBase):
 
 
 class TLogReader():
-    """A reader for TLog files that yields MAVLink messages with their timestamps."""
+    """TLog形式で保存されたfileを読み込むReader
+
+    Example:
+        ```python
+        reader=TLogReader(Path("sample.tlog")) # sample.tlogを読み込む
+        for (timestamp,message) in reader:
+            print(f"{timestamp=},{message=}") # Iteratorでtimestampとmessageを取り出す
+        ```
+    """
     def __init__(self,filepath:Path):
+        """TLog形式で保存されたfileを読み込むReader
+
+        Args:
+            filepath (Path): 読み込むfileへのpath
+        """
         with filepath.open("rb") as f:
             self.buffer=f.read()
         self.idx=0
@@ -150,27 +179,92 @@ class MAVLinkStatusSnapshot:
     last_received: dict[tuple[int, int, int], int]
 
 class MAVLinkStatus:
-    """A subscriber to MAVLink messages based on msgid, sysid, and compid."""
+    """MAVLinkTopicの受信状況を取得するためのclass"""
     def __init__(self):
         self.observed_messages: set[tuple[int, int, int]] = set()
         self.last_received: dict[tuple[int, int, int], int] = {}
         self._lock = Lock()  # Lock for thread-safe operations
     def update(self, msgid: int, sysid: int, compid: int, timestamp: int):
-        """Update the status with a new message."""
         with self._lock:
             self.observed_messages.add((msgid, sysid, compid))
             self.last_received[(msgid, sysid, compid)] = timestamp
     def snapshot(self) -> MAVLinkStatusSnapshot:
-        """Get a snapshot of the current status."""
+        """現在の受信状況を取得する
+
+        Returns:
+            MAVLinkStatusSnapshot: 現在の受信状況のsnapshot
+        """
         with self._lock:
             return MAVLinkStatusSnapshot(
                 observed_messages=frozenset(self.observed_messages),
                 last_received=self.last_received.copy()
             )
 
+class Sender(abc.ABC):
+    """Transportで送信を行う基底class"""
+    @abc.abstractmethod
+    def send(self,data:Sequence[int]):
+        """バイト列の送信を行う
+
+        Args:
+            data (Sequence[int]): 送信するバイト列
+        """
+        ...
+
+class Receiver(abc.ABC):
+    """Transportで受信を行う基底class"""
+    @abc.abstractmethod
+    def recv(self,timeout:float)->Sequence[int] | None:
+        """バイト列を受信する
+
+        Args:
+            timeout (float): 受信でtimeoutするまでの時間。単位はs
+
+        Returns:
+            Sequence[int] | None: 受信したバイト列。何も受信しなかった場合はNoneを返す
+        """
+        ...
+class TransportBase(abc.ABC):
+    """Transport実装の基底class"""
+    @abc.abstractmethod
+    def get_source_id(self)->str:
+        """Publisherの送信元を判別するためのIDを返す
+
+        Returns:
+            str: 送信元を判別するためのID
+        """
+        ...
+    @abc.abstractmethod
+    def get_sender(self)->Sender | None:
+        """Senderを返す
+
+        Returns:
+            Sender | None: Senderが存在しなければNoneを返す
+        """
+        ...
+    @abc.abstractmethod
+    def get_receiver(self)->Receiver | None:
+        """Receiverを返す
+
+        Returns:
+            Receiver | None: Receiverが存在しなければNoneを返す
+        """
+        ...
+    @abc.abstractmethod
+    def close(self):
+        """通信の終了処理を行う
+        """
+        ...
 class MAVLinkBridge:
-    """A bridge that connects a transport to a MAVLink topic."""
+    """TransportをTopicへ結びつけるためのBridge"""
     def __init__(self,transport:TransportBase,topic:MAVLinkTopic,filter: Callable[[TopicItem], bool]|None=None):
+        """TransportをTopicへ結びつけるためのBridge
+
+        Args:
+            transport (TransportBase): BindするTransport
+            topic (MAVLinkTopic): BindされるTopic
+            filter (Callable[[TopicItem], bool] | None, optional): メッセージを受け取るかを判別する関数。Trueを返すと受け取る
+        """
         self.transport=transport
         self.reciever=transport.get_receiver()
         self.sender=transport.get_sender()
@@ -208,7 +302,11 @@ class MAVLinkBridge:
         self.topic.unsubscribe(subscriber)
 
     def run(self,stop_event:Event):
-        """Run the bridge, starting both the receive and transmit threads."""
+        """Bridgeを実行する。stop_eventがsetされると終了する。
+
+        Args:
+            stop_event (Event): 実行を終了させるためのEvent
+        """
         thread_rx=Thread(target=self._run_rx,args=(stop_event,),name="thread_rx")
         thread_tx=Thread(target=self._run_tx,args=(stop_event,),name="thread_tx")
         thread_rx.start()
@@ -218,32 +316,62 @@ class MAVLinkBridge:
         self.transport.close()
 
 class MAVLinkTopic:
-    """A wrapper around the MAVLink class to handle subscriptions and message parsing."""
+    """MAVLink Messageの送受信を媒介するTopic"""
     def __init__(self):
+        """MAVLink Messageの送受信を媒介するTopic
+        """
         self.subscribers : set[MAVLinkSubscriberBase] = set()
         self.lock : Lock = Lock()
         self.logger = getLogger(__name__)
         self.status = MAVLinkStatus()  # Initialize a single MAVLinkStatus instance for tracking message status
     def create_subscriber(self, filter:Callable[[TopicItem],bool],maxsize:int=100) -> MAVLinkSubscriber:
-        """Create and return a new MAVLinkSubscriber instance."""
+        """Subscriberのインスタンスを作成する
+
+        Args:
+            filter (Callable[[TopicItem],bool]): メッセージを受け取るかを判別する関数。Trueを返すと受け取る
+            maxsize (int, optional): 内部的に用いるqueueのサイズ
+
+        Returns:
+            MAVLinkSubscriber
+        """
         subscriber = MAVLinkSubscriber(filter,maxsize=maxsize)
         with self.lock:
             self.subscribers.add(subscriber)
         return subscriber
     def create_history_subscriber(self,filter:Callable[[TopicItem],bool],duration:int=1000_000,maxsize:int=1000) -> MAVLinkHistory:
-        """Create and return a new MAVLinkHistory instance."""
+        """MAVLinkHistorySubscriberのインスタンスを作成する
+
+        Args:
+            filter (Callable[[TopicItem],bool]): メッセージを受け取るかを判別する関数。Trueを返すと受け取る
+            duration (int, optional): Historyで保持するMessageの時間幅。単位はus
+            maxsize (int, optional): Historyの内部的に用いるdequeの長さ
+
+        Returns:
+            MAVLinkHistory
+        """
         history_subscriber = MAVLinkHistory(filter,duration=duration,maxsize=maxsize)
         with self.lock:
             self.subscribers.add(history_subscriber)
         return history_subscriber
     def create_record(self,filepath:Path)->MAVLinkRecorder:
-        """Create and return a new MAVLinkRecorder instance."""
+        """MAVLinkRecorderのインスタンスを作成する
+
+        Args:
+            filepath (Path): 保存先のfileへのpath
+
+        Returns:
+            MAVLinkRecorder
+        """
         recorder = MAVLinkRecorder(filepath=filepath)
         with self.lock:
             self.subscribers.add(recorder)
         return recorder
     def unsubscribe(self, subscriber:MAVLinkSubscriberBase):
-        """Unsubscribe a subscriber from the topic."""
+        """Subscriberの登録を解除する
+
+        Args:
+            subscriber (MAVLinkSubscriberBase): 登録を解除するSubscriber
+        """
         with self.lock:
             self.subscribers.discard(subscriber)
     def _publish(self,timestamp:int,message:mavlink.MAVLink_message,source_id:str):
@@ -252,8 +380,19 @@ class MAVLinkTopic:
             for subscriber in self.subscribers:
                 subscriber.push(TopicItem(timestamp=timestamp,message=message,source_id=source_id))
     def create_publisher(self, source_id:str) -> MAVLinkPublisher:
-        """Create and return a new MAVLinkPublisher instance."""
+        """MAVLinkPublisherのインスタンスを作成する
+
+        Args:
+            source_id (str): 送信元を判別するためのID
+
+        Returns:
+            MAVLinkPublisher
+        """
         return MAVLinkPublisher(self, source_id=source_id)
     def get_status(self) -> MAVLinkStatus:
-        """Create and return a new MAVLinkStatus instance."""
+        """MAVLinkStatusのインスタンスを作成する
+
+        Returns:
+            MAVLinkStatus
+        """
         return self.status

@@ -103,13 +103,16 @@ flowchart LR
     Topic --> Sub3
 ```
 
+詳細な仕様については[API Reference](api/core.md#mavlink.core.MAVLinkTopic)を参照してください。
+
 ## Publisher / Subscriber
 
 `Publisher` はTopicへMAVLinkメッセージを送信し、
 `Subscriber` はTopicからMAVLinkメッセージを受信します。
 
-Subscriberは購読条件を指定できるため、特定のSystem ID、
-Component ID、Message IDなどに限定してメッセージを受信できます。
+Subscriberは購読条件を指定できるため、特定のSystem ID、Component ID、Message IDなどに限定してメッセージを受信できます。
+
+Publisherの詳細な仕様については[こちら](api/core.md#mavlink.core.MAVLinkPublisher)を、Subscriberの詳細な仕様については[こちら](api/core.md#mavlink.core.MAVLinkSubscriber)を参照してください。
 
 ## BridgeとTransport
 
@@ -165,6 +168,8 @@ flowchart TD
     Pub1 -->|"MAVLink message"| Topic
 ```
 
+MAVLinkBridgeの詳細な仕様については[こちら](api/core.md#mavlink.core.MAVLinkBridge)を参照してください。また、Transportの抽象classについては[TransportBase](api/core.md#mavlink.core.TransportBase)を参照してください。
+
 ## Node
 
 `Node` はアプリケーションの実行単位です。
@@ -175,10 +180,12 @@ NodeはTopicからPublisherやSubscriberを作成し、アプリケーション�
 
 `examples/mock_node.py` にNodeの実装例を示しています。
 
+Nodeの抽象classの仕様については[こちら](api/node.md)を参照してください
+
 
 ## ロギング
 
-`Recorder` はTopicで扱われるMAVLinkメッセージをテレメトリログとして記録します。
+`MAVLinkRecorder` はTopicで扱われるMAVLinkメッセージをテレメトリログとして記録します。
 
 Recorderをアプリケーションの通信処理から分離することで、既存のメッセージ処理を変更せずに通信内容を記録できます。
 
