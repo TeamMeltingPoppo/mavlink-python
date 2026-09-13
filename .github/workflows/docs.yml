@@ -31,10 +31,6 @@ jobs:
           version: "latest"
           enable-cache: true
 
-      - name: Generate documentation
-        run: |
-          uv --project tools run tools/generate_docs.py dialects -o docs
-
       - name: Generate module
         run: uv --project tools run tools/generate_module.py
 
