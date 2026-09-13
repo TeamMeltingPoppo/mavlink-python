@@ -12,7 +12,7 @@ class MockNode(Node):
     def __init__(self,topic:MAVLinkTopic):
         super().__init__(topic=topic,name="Node1",sys_id=255,comp_id=3)
     def setup(self):
-        self.subscriber=self.topic.create_subscriber(lambda _item:True)
+        self.subscriber=self.topic.create_subscriber(lambda item,target_source=self.name:item.source_id!=target_source)
         self.publisher=self.topic.create_publisher(self.name)
         self.last_send_heartbeat=time.time()
         self.logger.info("This is Monitor")
@@ -20,9 +20,7 @@ class MockNode(Node):
         for _ in range(1000):
             result = self.subscriber.get(0.01)
             if result:
-                if result.source_id!=self:
-                    msg=result.message
-                    self.logger.info(f"(sysid:{msg.get_srcSystem()},compid:{msg.get_srcComponent()}) --(msgId:{msg.get_msgId():3d})-> (sysid:{self.sys_id},compid:{self.comp_id})")
+                self.logger.info(f"(sysid:{result.message.get_srcSystem()},compid:{result.message.get_srcComponent()}) --(msgId:{result.message.get_msgId():3d})-> (sysid:{self.sys_id},compid:{self.comp_id})")
             else:
                 break
         if (time.time() - self.last_send_heartbeat) >= 1.0:
@@ -46,7 +44,7 @@ if __name__=="__main__":
     mavlink_topic = MAVLinkTopic()
 
     transport_udp   =TransportUDPMulticast(sender=UDPSender('239.255.0.1',14550),receiver=None)
-    transport_serial=TransportSerial(serialport=serial.Serial(port="COM5",baudrate=115200,timeout=0.1))
+    transport_serial=TransportSerial(serialport=serial.Serial(port="COM19",baudrate=115200,timeout=0.1))
     bridge_udp   =mavlink.MAVLinkBridge(transport=transport_udp   ,topic=mavlink_topic)
     bridge_serial=mavlink.MAVLinkBridge(transport=transport_serial,topic=mavlink_topic)
 

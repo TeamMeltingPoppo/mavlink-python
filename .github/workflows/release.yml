@@ -24,8 +24,11 @@ jobs:
           version: "latest"
           enable-cache: true
 
+      - name: Generate module
+        run: uv --project tools run tools/generate_module.py
+
       - name: Create package
-        run: sh scripts/create_package.sh
+        run: uv build --wheel
 
       - name: Create release
         uses: softprops/action-gh-release@v3

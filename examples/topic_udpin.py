@@ -10,7 +10,7 @@ class MockNode(Node):
     def __init__(self,topic:MAVLinkTopic):
         super().__init__(topic=topic,name="Node1",sys_id=255,comp_id=2)
     def setup(self):
-        self.subscriber=self.topic.create_subscriber(lambda item:True)
+        self.subscriber=self.topic.create_subscriber(lambda item,target_source_id=self.name:item.source_id!=target_source_id)
         self.publisher=self.topic.create_publisher(source_id=self.name)
         self.last_send_heartbeat=time.time()
         self.logger.info("This is Monitor")
@@ -18,9 +18,7 @@ class MockNode(Node):
         for _ in range(1000):
             result = self.subscriber.get(0.01)
             if result:
-                if result.source_id!=self:
-                    msg=result.message
-                    self.logger.info(f"(sysid:{msg.get_srcSystem()},compid:{msg.get_srcComponent()}) --(msgId:{msg.get_msgId():3d})-> (sysid:{self.sys_id},compid:{self.comp_id})")
+                self.logger.info(f"(sysid:{result.message.get_srcSystem()},compid:{result.message.get_srcComponent()}) --(msgId:{result.message.get_msgId():3d})-> (sysid:{self.sys_id},compid:{self.comp_id})")
             else:
                 break
         if (time.time() - self.last_send_heartbeat) >= 1.0:

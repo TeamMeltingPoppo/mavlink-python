@@ -69,9 +69,13 @@ jobs:
           version: "latest"
           enable-cache: true
 
+      - name: Generate module
+        if: steps.dialect.outputs.changed == 'true'
+        run: uv --project tools run tools/generate_module.py
+
       - name: Create package
         if: steps.dialect.outputs.changed == 'true'
-        run: sh scripts/create_package.sh
+        run: uv build --wheel
 
       - name: Create release
         if: steps.dialect.outputs.changed == 'true'
