@@ -6,6 +6,7 @@ import serial
 import serial.tools.list_ports
 from datetime import datetime
 from pathlib import Path
+import time
 
 from mavlink import MAVLinkTopic, MAVLinkBridge, MAVLinkHistory, definition
 from mavlink.transport import TransportSerial
@@ -142,6 +143,17 @@ class MAVLinkViewerApp(tk.Tk):
             duration=5_000_000
         )
 
+    def retry_connect(self,e:Exception):
+        self.serialport.close()
+        self.status_var.set(f"Error: {e}\nReconnecting to {self.serialport.port} @ {self.serialport.baudrate}")
+        while not self.stop_event.is_set():
+            try:
+                self.serialport.open()
+                self.status_var.set(f"Connected: {self.serialport.port} @ {self.serialport.baudrate}")
+                return
+            except serial.SerialException:
+                time.sleep(1.0)
+
     def connect(self):
         port = self.port_combo.get()
         baud_str = self.baud_combo.get()
@@ -158,7 +170,7 @@ class MAVLinkViewerApp(tk.Tk):
             return
 
         transport = TransportSerial(serialport=self.serialport)
-        bridge = MAVLinkBridge(transport=transport, topic=self.mavlink_topic)
+        bridge = MAVLinkBridge(transport=transport, topic=self.mavlink_topic,error_handler=self.retry_connect)
 
         self.stop_event.clear()
         self.bridge_thread = threading.Thread(

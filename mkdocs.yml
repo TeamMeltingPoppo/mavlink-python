@@ -1,6 +1,7 @@
 site_name: mavlink-python
 site_description: mavlink-python documentation
 site_url: https://teammeltingpoppo.github.io/mavlink-python/
+repo_url: https://github.com/teammeltingpoppo/mavlink-python/
 
 theme:
   name: material

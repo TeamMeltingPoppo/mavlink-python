@@ -257,19 +257,21 @@ class TransportBase(abc.ABC):
         ...
 class MAVLinkBridge:
     """TransportをTopicへ結びつけるためのBridge"""
-    def __init__(self,transport:TransportBase,topic:MAVLinkTopic,filter: Callable[[TopicItem], bool]|None=None):
+    def __init__(self,transport:TransportBase,topic:MAVLinkTopic,filter: Callable[[TopicItem], bool]|None=None,error_handler: Callable[[Exception], None] | None = None):
         """TransportをTopicへ結びつけるためのBridge
 
         Args:
             transport (TransportBase): BindするTransport
             topic (MAVLinkTopic): BindされるTopic
             filter (Callable[[TopicItem], bool] | None, optional): メッセージを受け取るかを判別する関数。Trueを返すと受け取る
+            error_handler (Callable[[Exception], None] | None, optional): エラー時のcallback関数
         """
         self.transport=transport
         self.reciever=transport.get_receiver()
         self.sender=transport.get_sender()
         self.filter=filter
         self.topic=topic
+        self.error_handler=error_handler
         self.mav=mavlink.MAVLink(None)
         self.mav.robust_parsing=True
 
@@ -278,27 +280,35 @@ class MAVLinkBridge:
             return
         publisher=self.topic.create_publisher(self.transport.get_source_id())
         while not stop_event.is_set():
-            buffer=self.reciever.recv(timeout=0.1)
-            if buffer is None:
-                continue
-            timestamp=time.time_ns() // 1000
-            messages=self.mav.parse_buffer(buffer)
-            if messages is None:
-                continue
-            for message in messages:
-                publisher.publish(timestamp=timestamp,message=message)
+            try:
+                buffer=self.reciever.recv(timeout=0.1)
+                if buffer is None:
+                    continue
+                timestamp=time.time_ns() // 1000
+                messages=self.mav.parse_buffer(buffer)
+                if messages is None:
+                    continue
+                for message in messages:
+                    publisher.publish(timestamp=timestamp,message=message)
+            except Exception as e:
+                if self.error_handler:
+                    self.error_handler(e)
 
     def _run_tx(self, stop_event:Event):
         if not self.sender:
             return
         subscriber=self.topic.create_subscriber(filter=self.filter or (lambda item: True))
         while not stop_event.is_set():
-            item = subscriber.get(timeout=0.1)
-            if item is None:
-                continue
-            if item.source_id==self.transport.get_source_id():
-                continue
-            self.sender.send(item.message.get_msgbuf())
+            try:
+                item = subscriber.get(timeout=0.1)
+                if item is None:
+                    continue
+                if item.source_id==self.transport.get_source_id():
+                    continue
+                self.sender.send(item.message.get_msgbuf())
+            except Exception as e:
+                if self.error_handler:
+                    self.error_handler(e)
         self.topic.unsubscribe(subscriber)
 
     def run(self,stop_event:Event):
