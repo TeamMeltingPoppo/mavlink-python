@@ -5,7 +5,7 @@ readme = "README.md"
 authors = [
     { name = "Yuta Suzuki", email = "suzuki7yuta@gmail.com" }
 ]
-requires-python = ">=3.14"
+requires-python = ">=3.12"
 dependencies = []
 dynamic = ["version"]
 
