@@ -1,3 +1,4 @@
+from __future__ import annotations
 import struct
 from pathlib import Path
 from typing import Callable,Optional,Sequence
@@ -21,7 +22,7 @@ class TopicItem:
 
 class MAVLinkPublisher:
     """TopicへMAVLink Messageを送信するPublisher"""
-    def __init__(self,topic:"MAVLinkTopic",source_id:str):
+    def __init__(self,topic:MAVLinkTopic,source_id:str):
         self.topic=topic
         self.source_id=source_id
     def publish(self,timestamp: int,message: mavlink.MAVLink_message) -> None:
